@@ -12,12 +12,45 @@ const ViralContentGenerator = () => {
   const [content, setContent] = useState([]);
   const [selectedPlatform, setSelectedPlatform] = useState('instagram');
 
-  const platforms = [
-    { id: 'instagram', name: 'Instagram', icon: '📸', color: 'from-pink-500 to-purple-500' },
-    { id: 'tiktok', name: 'TikTok', icon: '🎵', color: 'from-cyan-500 to-blue-500' },
-    { id: 'facebook', name: 'Facebook', icon: '👥', color: 'from-blue-500 to-indigo-500' }
-  ];
 
+  const loadContent = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await api.viralContent.get(propertyId);
+
+      if (data.length === 0) {
+        await generateContent();
+      } else {
+        setContent(data);
+      }
+    } catch (error) {
+      console.error('Error loading content:' error);
+      toast.error('Failed to load content');
+    } finally {
+      setLoading(false);
+    }
+  }, [propertyId]);
+
+  const generateContent = useCallback(async () => {
+    try {
+      setGenerating(true);
+      toast.loading('Generating viral content with AI...', { id: 'generate' });
+
+      const result = await api.viralContent.generate(propertyId);
+
+      setContent(result.content);
+      toast.success('Viral content generated!', { id: 'generate' });
+    } catch (error) {
+      console.error('Error generating content:'  error);
+      toast.error('Failed to generate content', { id: 'generate' });
+    } finally {
+      setGenerating(false);
+    }
+  }, [propertyId]);
+
+  useEffect(() => {
+    loadContent();
+  }, [loadContent]);
   useEffect(() => {
     loadContent();
   }, [propertyId, loadContent]);

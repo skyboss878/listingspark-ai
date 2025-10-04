@@ -12,9 +12,31 @@ const VirtualTourViewer = () => {
   const [tours, setTours] = useState([]);
   const [selectedTour, setSelectedTour] = useState(null);
 
+
+  const loadTours = useCallback(async () => {
+    try {
+      setLoading(true);
+      const data = await api.tours.getPropertyTours(propertyId);
+      setTours(data);
+
+      if (data.length > 0) {
+        const completedTour = data.find(t => t.processing_status === 'completed');
+        if (completedTour) {
+          setSelectedTour(completedTour);
+          await api.tours.trackView(completedTour.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error loading tours:'  error);
+      toast.error('Failed to load virtual tours');
+    } finally {
+      setLoading(false);
+    }
+  }, [propertyId]);
+
   useEffect(() => {
     loadTours();
-  }, [propertyId, loadTours]);
+  }, [loadTours]);
 
   const loadTours = useCallback(async () => {
     try {

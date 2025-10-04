@@ -10,10 +10,6 @@ const Analytics = () => {
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
 
-  useEffect(() => {
-    loadAnalytics();
-  }, [propertyId, loadAnalytics]);
-
   const loadAnalytics = useCallback(async () => {
     try {
       setLoading(true);
@@ -26,6 +22,10 @@ const Analytics = () => {
       setLoading(false);
     }
   }, [propertyId]);
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [loadAnalytics]);
 
   if (loading) {
     return (

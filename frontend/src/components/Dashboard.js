@@ -18,7 +18,7 @@ const Dashboard = () => {
     if (user) {
       fetchDashboardData();
     }
-  }, [user]);
+  }, [user, fetchDashboardData]);
 
   const fetchDashboardData = useCallback(async () => {
     try {
@@ -35,7 +35,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  }, [user]);
+  }, [user, fetchDashboardData]);
 
   const generateViralContent = async (propertyId) => {
     try {

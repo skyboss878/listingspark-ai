@@ -2,8 +2,8 @@ import React, { useState, useCallback } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
-import api from '../utils/api';
 import toast from 'react-hot-toast';
+import api from '../utils/api';
 import Camera360Capture from './Camera360Capture';
 
 const VirtualTourUploadPage = () => {

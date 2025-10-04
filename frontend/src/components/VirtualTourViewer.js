@@ -14,7 +14,7 @@ const VirtualTourViewer = () => {
 
   useEffect(() => {
     loadTours();
-  }, [propertyId]);
+  }, [propertyId, loadTours]);
 
   const loadTours = async () => {
     try {

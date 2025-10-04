@@ -14,10 +14,18 @@ const Camera360Capture = ({ onCapture, onClose }) => {
 
   const TOTAL_FRAMES = 36; // 36 frames for 360° (10° per frame)
   
+
+  const handleOrientation = (event) => {
+    setDeviceOrientation({
+      alpha: event.alpha,
+      beta: event.beta,
+      gamma: event.gamma
+    });
+  };
+
   useEffect(() => {
     startCamera();
-    
-    // Request device orientation permission for mobile
+
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission()
         .then(permission => {
@@ -31,18 +39,12 @@ const Camera360Capture = ({ onCapture, onClose }) => {
     }
 
     return () => {
-      stopCamera();
+      if (stream) {
+        stream.getTracks().forEach(track => track.stop());
+      }
       window.removeEventListener('deviceorientation', handleOrientation);
     };
-  }, [stopCamera]);
-
-  const handleOrientation = (event) => {
-    setDeviceOrientation({
-      alpha: event.alpha, // Z-axis (compass direction)
-      beta: event.beta,   // X-axis (front-back tilt)
-      gamma: event.gamma  // Y-axis (left-right tilt)
-    });
-  };
+  }, [stream]);
 
   const startCamera = async () => {
     try {

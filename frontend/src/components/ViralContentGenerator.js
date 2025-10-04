@@ -20,7 +20,7 @@ const ViralContentGenerator = () => {
 
   useEffect(() => {
     loadContent();
-  }, [propertyId]);
+  }, [propertyId, loadContent]);
 
   const loadContent = async () => {
     try {

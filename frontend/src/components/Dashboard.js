@@ -40,9 +40,9 @@ const Dashboard = () => {
   const generateViralContent = async (propertyId) => {
     try {
       toast.loading('Generating viral content...', { id: 'viral-gen' });
-      
+
       await axios.post(`${API}/properties/${propertyId}/viral-content`);
-      
+
       toast.success('Viral content generated!', { id: 'viral-gen' });
       navigate(`/viral-content/${propertyId}`);
     } catch (error) {
@@ -53,6 +53,7 @@ const Dashboard = () => {
   const viewTour = (propertyId) => {
     navigate(`/virtual-tour/${propertyId}`);
   };
+
 
   if (loading) {
     return (

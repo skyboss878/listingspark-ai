@@ -227,10 +227,8 @@ This won't last long! 🔥
 This {property_data.get('property_type', 'property')} is UNREAL 😍
 
 📍 {property_data.get('address', 'Amazing Location')}
-💵 {property_data.get('price', 'You Won\'t Believe')}
-
-{property_data.get('description', 'Everything you\'ve been dreaming of!')}{tour_section}
-
+💵 {property_data.get('price', "You Won't Believe")}
+{property_data.get('description', "Everything you've been dreaming of!")}{tour_section}
 Who's ready to move in? 🙋‍♀️
 
 #RealEstateTikTok #HouseTour #DreamHome #PropertyTour #RealEstate #NewListing #VirtualTour #360Home #HouseTok""",

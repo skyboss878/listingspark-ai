@@ -3,10 +3,13 @@ import os
 from pathlib import Path
 
 if __name__ == "__main__":
-    # Ensure directories exist
+    # Ensure all directories exist
     Path("uploads").mkdir(exist_ok=True)
     Path("logs").mkdir(exist_ok=True)
-    
+    Path("tours").mkdir(exist_ok=True)
+    Path("video_tours").mkdir(exist_ok=True)
+    Path("music_library").mkdir(exist_ok=True)
+
     # Start the server
     uvicorn.run(
         "server:app",

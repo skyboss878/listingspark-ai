@@ -5,11 +5,12 @@ import toast from 'react-hot-toast';
 import axios from 'axios';
 import { UserContext } from '../App';
 
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const LandingPage = () => {
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [selectedPlan, setSelectedPlan] = useState('professional');
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -18,46 +19,72 @@ const LandingPage = () => {
   const { login } = useContext(UserContext);
   const navigate = useNavigate();
 
+  const plans = [
+    {
+      id: 'starter',
+      name: 'Starter',
+      price: 29,
+      emoji: '🌟',
+      features: [
+        '5 Property Listings',
+        'Basic Viral Content Generation',
+        'Instagram & Facebook Content',
+        'Email Support',
+        'Basic Analytics'
+      ],
+      limitations: ['Limited to 5 properties', 'Basic templates only']
+    },
+    {
+      id: 'professional',
+      name: 'Professional',
+      price: 79,
+      emoji: '🚀',
+      popular: true,
+      features: [
+        'Unlimited Property Listings',
+        'Advanced AI Content Generation',
+        'All Social Media Platforms',
+        'Virtual Tour Creation',
+        'Advanced Analytics',
+        'Priority Support',
+        'Custom Branding'
+      ],
+      limitations: []
+    },
+    {
+      id: 'enterprise',
+      name: 'Enterprise',
+      price: 149,
+      emoji: '👑',
+      features: [
+        'Everything in Professional',
+        'Multi-Agent Team Access',
+        'White-label Solution',
+        'API Access',
+        'Custom Integrations',
+        'Dedicated Account Manager',
+        '24/7 Phone Support'
+      ],
+      limitations: []
+    }
+  ];
+
   const handleSignup = async (e) => {
     e.preventDefault();
     try {
       const response = await axios.post(`${API_URL}/api/users`, {
         name: formData.name,
         email: formData.email,
+        plan: selectedPlan
       });
-
+      
       const userData = response.data;
       login(userData);
-      toast.success('Account created! Please select a plan to continue.');
-      navigate('/pricing');
+      toast.success('Account created successfully! Welcome to ListingSpark AI!');
+      navigate('/dashboard');
     } catch (error) {
       toast.error('Failed to create account. Please try again.');
       console.error('Signup error:', error);
-    }
-  };
-
-  const handleLogin = async (e) => {
-    e.preventDefault();
-    try {
-      // Add your login API call here
-      const response = await axios.post(`${API_URL}/api/login`, {
-        email: formData.email,
-        password: formData.password
-      });
-      
-      const userData = response.data;
-      login(userData);
-      
-      // Check if user has active subscription
-      if (userData.subscription && userData.subscription.active) {
-        navigate('/dashboard');
-      } else {
-        toast.info('Please select a subscription plan');
-        navigate('/pricing');
-      }
-    } catch (error) {
-      toast.error('Login failed. Please check your credentials.');
-      console.error('Login error:', error);
     }
   };
 
@@ -71,13 +98,13 @@ const LandingPage = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       {/* Header */}
-      <motion.header
+      <motion.header 
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
         className="relative z-50 px-6 py-4"
       >
         <nav className="max-w-7xl mx-auto flex items-center justify-between">
-          <div className="flex items-center space-x-2 cursor-pointer" onClick={() => navigate('/')}>
+          <div className="flex items-center space-x-2">
             <span className="text-3xl">⚡</span>
             <span className="text-2xl font-bold text-white">ListingSpark AI</span>
           </div>
@@ -113,7 +140,7 @@ const LandingPage = () => {
               </span>
             </h1>
             <p className="text-xl md:text-2xl text-blue-100 mb-12 max-w-4xl mx-auto leading-relaxed">
-              The AI-powered platform that transforms your property listings into scroll-stopping,
+              The AI-powered platform that transforms your property listings into scroll-stopping, 
               share-worthy content that sells houses faster than traditional marketing.
             </p>
           </motion.div>
@@ -128,7 +155,7 @@ const LandingPage = () => {
               onClick={() => setIsSignupOpen(true)}
               className="bg-gradient-to-r from-pink-500 to-yellow-500 text-white text-xl font-bold px-12 py-4 rounded-full hover:from-pink-600 hover:to-yellow-600 transition-all transform hover:scale-105 shadow-2xl"
             >
-              Get Started Now
+              Start Free Trial 🚀
             </button>
             <button className="text-white text-lg font-semibold flex items-center space-x-2 hover:text-blue-200 transition-colors">
               <span>Watch Demo</span>
@@ -226,6 +253,85 @@ const LandingPage = () => {
         </div>
       </section>
 
+      {/* Pricing Section */}
+      <section className="py-20 px-6" id="pricing">
+        <div className="max-w-7xl mx-auto">
+          <motion.div
+            initial={{ y: 50, opacity: 0 }}
+            whileInView={{ y: 0, opacity: 1 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <h2 className="text-5xl font-bold text-white mb-6">
+              Choose Your Growth Plan
+            </h2>
+            <p className="text-xl text-blue-100 max-w-3xl mx-auto">
+              Start your viral real estate journey today. All plans include a 14-day free trial.
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {plans.map((plan, index) => (
+              <motion.div
+                key={plan.id}
+                initial={{ y: 50, opacity: 0 }}
+                whileInView={{ y: 0, opacity: 1 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+                className={`relative bg-white/10 backdrop-blur-lg border-2 rounded-3xl p-8 text-center transition-all transform hover:scale-105 ${
+                  plan.popular 
+                    ? 'border-yellow-400 bg-yellow-400/10' 
+                    : 'border-white/20 hover:border-white/40'
+                } ${
+                  selectedPlan === plan.id ? 'ring-4 ring-blue-400' : ''
+                }`}
+                onClick={() => setSelectedPlan(plan.id)}
+              >
+                {plan.popular && (
+                  <div className="absolute -top-4 left-1/2 transform -translate-x-1/2 bg-gradient-to-r from-yellow-400 to-orange-500 text-black text-sm font-bold px-6 py-2 rounded-full">
+                    🔥 MOST POPULAR
+                  </div>
+                )}
+                
+                <div className="text-6xl mb-4">{plan.emoji}</div>
+                <h3 className="text-3xl font-bold text-white mb-2">{plan.name}</h3>
+                <div className="text-5xl font-black text-yellow-400 mb-2">${plan.price}</div>
+                <div className="text-blue-200 mb-8">per month</div>
+                
+                <ul className="text-left space-y-3 mb-8">
+                  {plan.features.map((feature, idx) => (
+                    <li key={idx} className="flex items-center space-x-3 text-white">
+                      <span className="text-green-400">✓</span>
+                      <span>{feature}</span>
+                    </li>
+                  ))}
+                  {plan.limitations.map((limitation, idx) => (
+                    <li key={idx} className="flex items-center space-x-3 text-gray-400">
+                      <span className="text-red-400">✗</span>
+                      <span>{limitation}</span>
+                    </li>
+                  ))}
+                </ul>
+                
+                <button
+                  onClick={() => {
+                    setSelectedPlan(plan.id);
+                    setIsSignupOpen(true);
+                  }}
+                  className={`w-full py-4 rounded-2xl font-bold text-lg transition-all ${
+                    plan.popular
+                      ? 'bg-gradient-to-r from-yellow-400 to-orange-500 text-black hover:from-yellow-500 hover:to-orange-600'
+                      : 'bg-white/20 text-white hover:bg-white/30'
+                  }`}
+                >
+                  Start Free Trial
+                </button>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* CTA Section */}
       <section className="py-20 px-6 bg-gradient-to-r from-purple-600 to-pink-600">
         <div className="max-w-4xl mx-auto text-center">
@@ -241,10 +347,10 @@ const LandingPage = () => {
               Join thousands of realtors who've already discovered the power of viral marketing.
             </p>
             <button
-              onClick={() => navigate('/pricing')}
+              onClick={() => setIsSignupOpen(true)}
               className="bg-white text-purple-600 text-2xl font-bold px-16 py-6 rounded-full hover:bg-gray-100 transition-all transform hover:scale-105 shadow-2xl"
             >
-              View Pricing Plans
+              Start Your Viral Journey 🚀
             </button>
           </motion.div>
         </div>
@@ -277,19 +383,12 @@ const LandingPage = () => {
           <motion.div
             initial={{ scale: 0.8, opacity: 0 }}
             animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-md w-full relative"
+            className="bg-white rounded-3xl p-8 max-w-md w-full max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={() => setIsSignupOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl"
-            >
-              ✕
-            </button>
-
             <div className="text-center mb-8">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">Create Your Account</h2>
-              <p className="text-gray-600">Get started with ListingSpark AI</p>
+              <p className="text-gray-600">Start your 14-day free trial today</p>
             </div>
 
             <form onSubmit={handleSignup} className="space-y-6">
@@ -332,103 +431,33 @@ const LandingPage = () => {
                 />
               </div>
 
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">Selected Plan</label>
+                <div className="bg-gray-50 p-4 rounded-xl">
+                  <div className="flex items-center justify-between">
+                    <span className="font-semibold">{plans.find(p => p.id === selectedPlan)?.name}</span>
+                    <span className="text-2xl font-bold text-purple-600">
+                      ${plans.find(p => p.id === selectedPlan)?.price}/mo
+                    </span>
+                  </div>
+                  <p className="text-sm text-gray-600 mt-1">14-day free trial included</p>
+                </div>
+              </div>
+
               <button
                 type="submit"
                 className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all"
               >
-                Create Account
+                Start Free Trial 🚀
               </button>
             </form>
 
-            <p className="text-center text-gray-600 mt-4">
-              Already have an account?{' '}
-              <button
-                onClick={() => {
-                  setIsSignupOpen(false);
-                  setIsLoginOpen(true);
-                }}
-                className="text-purple-600 hover:text-purple-700 font-semibold"
-              >
-                Login
-              </button>
-            </p>
-          </motion.div>
-        </motion.div>
-      )}
-
-      {/* Login Modal */}
-      {isLoginOpen && (
-        <motion.div
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4"
-          onClick={() => setIsLoginOpen(false)}
-        >
-          <motion.div
-            initial={{ scale: 0.8, opacity: 0 }}
-            animate={{ scale: 1, opacity: 1 }}
-            className="bg-white rounded-3xl p-8 max-w-md w-full relative"
-            onClick={(e) => e.stopPropagation()}
-          >
             <button
-              onClick={() => setIsLoginOpen(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 text-2xl"
+              onClick={() => setIsSignupOpen(false)}
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
             >
               ✕
             </button>
-
-            <div className="text-center mb-8">
-              <h2 className="text-3xl font-bold text-gray-900 mb-2">Welcome Back</h2>
-              <p className="text-gray-600">Login to your account</p>
-            </div>
-
-            <form onSubmit={handleLogin} className="space-y-6">
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
-                <input
-                  type="email"
-                  name="email"
-                  value={formData.email}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Enter your email"
-                  required
-                />
-              </div>
-
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
-                <input
-                  type="password"
-                  name="password"
-                  value={formData.password}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  placeholder="Enter your password"
-                  required
-                />
-              </div>
-
-              <button
-                type="submit"
-                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 text-white font-bold py-4 rounded-xl hover:from-purple-700 hover:to-pink-700 transition-all"
-              >
-                Login
-              </button>
-            </form>
-
-            <p className="text-center text-gray-600 mt-4">
-              Don't have an account?{' '}
-              <button
-                onClick={() => {
-                  setIsLoginOpen(false);
-                  setIsSignupOpen(true);
-                }}
-                className="text-purple-600 hover:text-purple-700 font-semibold"
-              >
-                Sign up
-              </button>
-            </p>
           </motion.div>
         </motion.div>
       )}

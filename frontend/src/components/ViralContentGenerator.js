@@ -41,7 +41,7 @@ const ViralContentGenerator = () => {
       setContent(result.content);
       toast.success('Viral content generated!', { id: 'generate' });
     } catch (error) {
-      console.error('Error generating content:'  error);
+      console.error('Error generating content:', error);
       toast.error('Failed to generate content', { id: 'generate' });
     } finally {
       setGenerating(false);

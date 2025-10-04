@@ -27,7 +27,7 @@ const VirtualTourViewer = () => {
         }
       }
     } catch (error) {
-      console.error('Error loading tours:'  error);
+      console.error('Error loading tours:', error);
       toast.error('Failed to load virtual tours');
     } finally {
       setLoading(false);

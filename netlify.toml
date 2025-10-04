@@ -1,0 +1,9 @@
+[build]
+  base = "frontend"
+  command = "npm run build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "18.18.0"
+  CI = "false"
+  REACT_APP_API_URL = "https://listingspark-ai-3.onrender.com"

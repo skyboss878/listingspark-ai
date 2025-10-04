@@ -2,11 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import toast, { Toaster } from 'react-hot-toast';
-import axios from 'axios';
 import './App.css';
 
 // Import components
 import LandingPage from './components/LandingPage';
+import Pricing from './components/Pricing';
+import PaymentSuccess from './pages/PaymentSuccess';
+import PaymentCancel from './pages/PaymentCancel';
 import Dashboard from './components/Dashboard';
 import PropertyCreator from './components/PropertyCreator';
 import ViralContentGenerator from './components/ViralContentGenerator';
@@ -16,11 +18,28 @@ import VirtualTourViewer from './components/VirtualTourViewer';
 import TermsAndConditions from './components/TermsAndConditions';
 import PrivacyPolicy from './components/PrivacyPolicy';
 
-const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 const API = `${BACKEND_URL}/api`;
 
 // User Context
 const UserContext = React.createContext();
+
+// Protected Route Component
+function ProtectedRoute({ children }) {
+  const { user } = React.useContext(UserContext);
+  
+  if (!user) {
+    toast.error('Please log in to access this page');
+    return <Navigate to="/" />;
+  }
+  
+  if (!user.subscription || !user.subscription.active) {
+    toast.error('Please select a subscription plan to continue');
+    return <Navigate to="/pricing" />;
+  }
+  
+  return children;
+}
 
 function App() {
   const [user, setUser] = useState(null);
@@ -42,13 +61,19 @@ function App() {
   const login = (userData) => {
     setUser(userData);
     localStorage.setItem('listingspark_user', JSON.stringify(userData));
-    toast.success(`Welcome back, ${userData.name}!`);
+    toast.success(`Welcome, ${userData.name}!`);
   };
 
   const logout = () => {
     setUser(null);
     localStorage.removeItem('listingspark_user');
     toast.success('Logged out successfully');
+  };
+
+  const updateUserSubscription = (subscriptionData) => {
+    const updatedUser = { ...user, subscription: subscriptionData };
+    setUser(updatedUser);
+    localStorage.setItem('listingspark_user', JSON.stringify(updatedUser));
   };
 
   if (loading) {
@@ -64,41 +89,70 @@ function App() {
   }
 
   return (
-    <UserContext.Provider value={{ user, login, logout }}>
+    <UserContext.Provider value={{ user, login, logout, updateUserSubscription }}>
       <BrowserRouter>
         <div className="App">
           <AnimatePresence mode="wait">
             <Routes>
               <Route path="/" element={<LandingPage />} />
+              <Route path="/pricing" element={<Pricing />} />
+              <Route path="/payment/success" element={<PaymentSuccess />} />
+              <Route path="/payment/cancel" element={<PaymentCancel />} />
               <Route path="/terms" element={<TermsAndConditions />} />
               <Route path="/privacy" element={<PrivacyPolicy />} />
-              <Route 
-                path="/dashboard" 
-                element={user ? <Dashboard /> : <Navigate to="/" />} 
+              
+              {/* Protected Routes */}
+              <Route
+                path="/dashboard"
+                element={
+                  <ProtectedRoute>
+                    <Dashboard />
+                  </ProtectedRoute>
+                }
               />
-              <Route 
-                path="/create-property" 
-                element={user ? <PropertyCreator /> : <Navigate to="/" />} 
+              <Route
+                path="/create-property"
+                element={
+                  <ProtectedRoute>
+                    <PropertyCreator />
+                  </ProtectedRoute>
+                }
               />
-              <Route 
-                path="/viral-content/:propertyId" 
-                element={user ? <ViralContentGenerator /> : <Navigate to="/" />} 
+              <Route
+                path="/viral-content/:propertyId"
+                element={
+                  <ProtectedRoute>
+                    <ViralContentGenerator />
+                  </ProtectedRoute>
+                }
               />
-              <Route 
-                path="/analytics/:propertyId" 
-                element={user ? <Analytics /> : <Navigate to="/" />} 
+              <Route
+                path="/analytics/:propertyId"
+                element={
+                  <ProtectedRoute>
+                    <Analytics />
+                  </ProtectedRoute>
+                }
               />
-              <Route 
-                path="/upload-tour/:propertyId" 
-                element={user ? <VirtualTourUploadPage /> : <Navigate to="/" />} 
+              <Route
+                path="/upload-tour/:propertyId"
+                element={
+                  <ProtectedRoute>
+                    <VirtualTourUploadPage />
+                  </ProtectedRoute>
+                }
               />
-              <Route 
-                path="/virtual-tour/:propertyId" 
-                element={user ? <VirtualTourViewer /> : <Navigate to="/" />} 
+              <Route
+                path="/virtual-tour/:propertyId"
+                element={
+                  <ProtectedRoute>
+                    <VirtualTourViewer />
+                  </ProtectedRoute>
+                }
               />
             </Routes>
           </AnimatePresence>
-          <Toaster 
+          <Toaster
             position="top-right"
             toastOptions={{
               duration: 4000,

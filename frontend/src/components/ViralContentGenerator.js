@@ -24,7 +24,7 @@ const ViralContentGenerator = () => {
         setContent(data);
       }
     } catch (error) {
-      console.error('Error loading content:' error);
+      console.error('Error loading content:', error);
       toast.error('Failed to load content');
     } finally {
       setLoading(false);

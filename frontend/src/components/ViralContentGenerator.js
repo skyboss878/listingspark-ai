@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
@@ -22,7 +22,7 @@ const ViralContentGenerator = () => {
     loadContent();
   }, [propertyId, loadContent]);
 
-  const loadContent = async () => {
+  const loadContent = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.viralContent.get(propertyId);
@@ -39,9 +39,9 @@ const ViralContentGenerator = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [propertyId, generateContent]);
 
-  const generateContent = async () => {
+  const generateContent = useCallback(async () => {
     try {
       setGenerating(true);
       toast.loading('Generating viral content with AI...', { id: 'generate' });
@@ -56,7 +56,7 @@ const ViralContentGenerator = () => {
     } finally {
       setGenerating(false);
     }
-  };
+  }, [propertyId]);
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);

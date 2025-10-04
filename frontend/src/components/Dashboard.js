@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext } from 'react';
+import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { UserContext } from '../App';
@@ -20,7 +20,7 @@ const Dashboard = () => {
     }
   }, [user]);
 
-  const fetchDashboardData = async () => {
+  const fetchDashboardData = useCallback(async () => {
     try {
       const [propertiesRes, dashboardRes] = await Promise.all([
         axios.get(`${API}/properties/${user.id}`),
@@ -35,7 +35,7 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [user]);
 
   const generateViralContent = async (propertyId) => {
     try {

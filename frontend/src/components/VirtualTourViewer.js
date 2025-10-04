@@ -1,5 +1,5 @@
 // src/components/VirtualTourViewer.js
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import api, { BACKEND_URL } from '../utils/api';
@@ -16,7 +16,7 @@ const VirtualTourViewer = () => {
     loadTours();
   }, [propertyId, loadTours]);
 
-  const loadTours = async () => {
+  const loadTours = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.tours.getPropertyTours(propertyId);
@@ -36,7 +36,7 @@ const VirtualTourViewer = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [propertyId]);
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate, useParams } from 'react-router-dom';
 import api from '../utils/api';
@@ -12,9 +12,9 @@ const Analytics = () => {
 
   useEffect(() => {
     loadAnalytics();
-  }, [propertyId]);
+  }, [propertyId, loadAnalytics]);
 
-  const loadAnalytics = async () => {
+  const loadAnalytics = useCallback(async () => {
     try {
       setLoading(true);
       const data = await api.analytics.get(propertyId);
@@ -25,7 +25,7 @@ const Analytics = () => {
     } finally {
       setLoading(false);
     }
-  };
+  }, [propertyId]);
 
   if (loading) {
     return (

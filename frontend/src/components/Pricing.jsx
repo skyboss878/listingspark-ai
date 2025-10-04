@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { PayPalScriptProvider, PayPalButtons } from '@paypal/react-paypal-js';
+// PayPal integration removed
 
 const API_URL = import.meta.env.VITE_API_URL;
 
@@ -44,7 +44,6 @@ const pricingTiers = {
 };
 
 export default function Pricing() {
-  const [selectedTier, setSelectedTier] = useState(null);
   const [loading, setLoading] = useState(false);
 
   const handlePayPalClick = async (tier) => {

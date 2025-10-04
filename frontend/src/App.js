@@ -18,7 +18,6 @@ import VirtualTourViewer from './components/VirtualTourViewer';
 import TermsAndConditions from './components/TermsAndConditions';
 import PrivacyPolicy from './components/PrivacyPolicy';
 
-const BACKEND_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 // const API = `${BACKEND_URL}/api`;
 
 // User Context

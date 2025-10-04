@@ -50,9 +50,6 @@ const ViralContentGenerator = () => {
 
   useEffect(() => {
     loadContent();
-  }, [loadContent]);
-  useEffect(() => {
-    loadContent();
   }, [propertyId, loadContent]);
 
   const loadContent = useCallback(async () => {

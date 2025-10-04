@@ -34,7 +34,7 @@ const Camera360Capture = ({ onCapture, onClose }) => {
       stopCamera();
       window.removeEventListener('deviceorientation', handleOrientation);
     };
-  }, []);
+  }, [stopCamera]);
 
   const handleOrientation = (event) => {
     setDeviceOrientation({
@@ -146,7 +146,7 @@ const Camera360Capture = ({ onCapture, onClose }) => {
 
       // Calculate panorama dimensions (2:1 aspect ratio)
       const frameWidth = videoRef.current.videoWidth;
-      const frameHeight = videoRef.current.videoHeight;
+      // const frameHeight = videoRef.current.videoHeight;
       const panoWidth = Math.max(frameWidth * 2, 4096);
       const panoHeight = panoWidth / 2;
 

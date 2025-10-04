@@ -1,19 +1,11 @@
-# Python
-__pycache__/
-*.pyc
-*.pyo
-*.pyd
-*.sqlite3
-*.log
-
-# Virtual environments
-venv/
 .env
-
-# Node
-node_modules/
-dist/
-build/
-
-# OS
+*.db
+__pycache__/
+venv/
+*.pyc
 .DS_Store
+uploads/
+tours/
+logs/
+*.log
+*.backup

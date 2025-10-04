@@ -74,7 +74,7 @@ const VirtualTourUploadPage = () => {
         });
       }, 300);
 
-      const result = await api.tours.upload360(propertyId, uploadedFile, sceneName);
+      // const result = await api.tours.upload360(propertyId, uploadedFile, sceneName);
 
       clearInterval(progressInterval);
       setUploadProgress(100);

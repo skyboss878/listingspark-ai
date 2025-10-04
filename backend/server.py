@@ -20,7 +20,7 @@ from PIL import Image
 from dotenv import load_dotenv
 load_dotenv()
 from video_tour_generator_pro import premium_video_generator, VideoConfig, BrandingConfig
-
+from payment import router as payment_router
 # Configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -36,6 +36,8 @@ TOURS_DIR.mkdir(exist_ok=True)
 client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Initialize AI Content Engine
 viral_content_engine = ViralContentEngine()
+
+app.include_router(payment_router, prefix="/api/payment", tags=["payment"])
 
 # Professional Space Types for Real Estate
 SPACE_TYPES = {

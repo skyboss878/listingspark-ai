@@ -13,6 +13,13 @@ const Dashboard = () => {
   const [properties, setProperties] = useState([]);
   const [stats, setStats] = useState({});
   const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (user) {
+      fetchDashboardData();
+    }
+  }, [user, fetchDashboardData]);
+
   const fetchDashboardData = useCallback(async () => {
     try {
       const [propertiesRes, dashboardRes] = await Promise.all([
@@ -28,13 +35,8 @@ const Dashboard = () => {
     } finally {
       setLoading(false);
     }
-  },   [user]);
-
-  useEffect(() => {
-    if (user) {
-      fetchDashboardData();
-    }
   }, [user, fetchDashboardData]);
+
   const generateViralContent = async (propertyId) => {
     try {
       toast.loading('Generating viral content...', { id: 'viral-gen' });

@@ -21,6 +21,7 @@ from dotenv import load_dotenv
 load_dotenv()
 from video_tour_generator_pro import premium_video_generator, VideoConfig, BrandingConfig
 from payment import router as payment_router
+from routes import subscription
 # Configuration
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -450,6 +451,7 @@ async def api_health_check():
 app.include_router(payment_router, prefix="/api/payment", tags=["payment"])
 api_router = app
 
+app.include_router(subscription.router, prefix="/api/subscription", tags=["subscription"])
 # Authentication routes
 @app.post("/api/users")
 async def create_user(user_data: UserCreate):

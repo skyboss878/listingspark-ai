@@ -450,6 +450,53 @@ async def api_health_check():
 app.include_router(payment_router, prefix="/api/payment", tags=["payment"])
 api_router = app
 
+# Authentication routes
+@app.post("/api/users")
+async def create_user(user_data: UserCreate):
+    """Create a new user"""
+    user_id = str(uuid.uuid4())
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        try:
+            await db.execute(
+                "INSERT INTO users (id, email, name, plan) VALUES (?, ?, ?, ?)",
+                (user_id, user_data.email, user_data.name, "free")
+            )
+            await db.commit()
+            return {
+                "id": user_id,
+                "email": user_data.email,
+                "name": user_data.name,
+                "plan": "free",
+                "listings_created": 0
+            }
+        except aiosqlite.IntegrityError:
+            raise HTTPException(400, "Email already exists")
+
+@app.post("/api/login")
+async def login(user_data: UserCreate):
+    """Login or create user"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute(
+            "SELECT * FROM users WHERE email = ?", (user_data.email,)
+        ) as cursor:
+            row = await cursor.fetchone()
+            if row:
+                return {
+                    "id": row[0], "email": row[1], "name": row[2],
+                    "plan": row[3], "listings_created": row[4]
+                }
+            
+            # Create new user if doesn't exist
+            user_id = str(uuid.uuid4())
+            await db.execute(
+                "INSERT INTO users (id, email, name) VALUES (?, ?, ?)",
+                (user_id, user_data.email, user_data.name)
+            )
+            await db.commit()
+            return {
+                "id": user_id, "email": user_data.email,
+                "name": user_data.name, "plan": "free", "listings_created": 0
+            }
 # Database initialization
 async def init_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:

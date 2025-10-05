@@ -1,0 +1,149 @@
+.pricing-container {
+  min-height: 100vh;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.pricing-container h1 {
+  text-align: center;
+  color: white;
+  font-size: 2.5rem;
+  margin-bottom: 3rem;
+  font-weight: 700;
+}
+
+.pricing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 2rem;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.pricing-card {
+  background: white;
+  border-radius: 16px;
+  padding: 2.5rem;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.1);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+}
+
+.pricing-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.15);
+}
+
+.pricing-card h2 {
+  font-size: 1.75rem;
+  color: #333;
+  margin-bottom: 1rem;
+  font-weight: 600;
+}
+
+.price {
+  display: flex;
+  align-items: baseline;
+  margin-bottom: 2rem;
+  color: #667eea;
+}
+
+.currency {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.amount {
+  font-size: 3rem;
+  font-weight: 700;
+  margin: 0 0.25rem;
+}
+
+.period {
+  font-size: 1rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+  flex-grow: 1;
+}
+
+.features li {
+  padding: 0.75rem 0;
+  color: #555;
+  font-size: 1rem;
+  border-bottom: 1px solid #f0f0f0;
+  line-height: 1.5;
+}
+
+.features li:last-child {
+  border-bottom: none;
+}
+
+.subscribe-btn {
+  width: 100%;
+  padding: 1rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1.1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  margin-top: auto;
+}
+
+.subscribe-btn:hover:not(:disabled) {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(102, 126, 234, 0.4);
+}
+
+.subscribe-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Highlight middle card (Professional) */
+.pricing-card:nth-child(2) {
+  transform: scale(1.05);
+  border: 3px solid #667eea;
+}
+
+.pricing-card:nth-child(2) h2 {
+  color: #667eea;
+}
+
+/* Mobile responsive */
+@media (max-width: 768px) {
+  .pricing-container {
+    padding: 2rem 1rem;
+  }
+
+  .pricing-container h1 {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+  }
+
+  .pricing-grid {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+
+  .pricing-card {
+    padding: 2rem;
+  }
+
+  .pricing-card:nth-child(2) {
+    transform: scale(1);
+  }
+
+  .amount {
+    font-size: 2.5rem;
+  }
+}

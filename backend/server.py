@@ -37,8 +37,6 @@ client = AsyncOpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 # Initialize AI Content Engine
 viral_content_engine = ViralContentEngine()
 
-app.include_router(payment_router, prefix="/api/payment", tags=["payment"])
-
 # Professional Space Types for Real Estate
 SPACE_TYPES = {
     "Living Spaces": [
@@ -435,7 +433,21 @@ app.add_middleware(
 
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 app.mount("/tours", StaticFiles(directory=str(TOURS_DIR)), name="tours")
+# Health check routes
+@app.get("/")
+async def root():
+    return {"status": "ok", "service": "ListingSpark AI", "version": "2.0.0"}
 
+@app.get("/health")
+async def health_check():
+    return {"status": "healthy", "version": "2.0.0-professional"}
+
+@app.get("/api/health")
+async def api_health_check():
+    return {"status": "healthy", "version": "2.0.0-professional"}
+
+# Include payment router
+app.include_router(payment_router, prefix="/api/payment", tags=["payment"])
 api_router = app
 
 # Database initialization

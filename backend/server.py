@@ -17,6 +17,7 @@ from pydantic import BaseModel
 from app.ai_content_engine import ViralContentEngine
 from openai import AsyncOpenAI
 from PIL import Image
+from elevenlabs_voice import elevenlabs_engine
 from dotenv import load_dotenv
 load_dotenv()
 from video_tour_generator_pro import premium_video_generator, VideoConfig, BrandingConfig
@@ -782,6 +783,412 @@ async def track_tour_view(tour_id: str):
     
     return {"message": "View tracked"}
 
+@api_router.get("/voice-options")
+async def get_voice_options():
+    """Get available voice options for narration"""
+    return {
+        "voices": elevenlabs_engine.voices,
+        "enabled": elevenlabs_engine.enabled
+    }
+
+@api_router.post("/properties/{property_id}/generate-narrated-tour")
+async def generate_narrated_tour(
+    property_id: str,
+    background_tasks: BackgroundTasks,
+    voice_id: str = "professional_female",
+    include_music: bool = True
+):
+    """Generate complete 360° tour with professional voice narration"""
+    
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Get property data
+        async with db.execute(
+            "SELECT * FROM properties WHERE id = ?", (property_id,)
+        ) as cursor:
+            prop_row = await cursor.fetchone()
+            if not prop_row:
+                raise HTTPException(404, "Property not found")
+            
+            property_data = {
+                'id': prop_row[0],
+                'user_id': prop_row[1],
+                'title': prop_row[2],
+                'description': prop_row[3],
+                'address': prop_row[4],
+                'price': prop_row[5],
+                'property_type': prop_row[6],
+                'bedrooms': prop_row[7],
+                'bathrooms': prop_row[8],
+                'square_feet': prop_row[9]
+            }
+        
+        # Get rooms with 360 images
+        async with db.execute(
+            """SELECT * FROM rooms 
+               WHERE property_id = ? AND processing_status = 'completed' 
+               ORDER BY sort_order""",
+            (property_id,)
+        ) as cursor:
+            room_rows = await cursor.fetchall()
+            
+            if not room_rows:
+                raise HTTPException(400, "No completed rooms found for this property")
+            
+            rooms = [{
+                'id': r[0],
+                'property_id': r[1],
+                'space_name': r[2],
+                'space_type': r[3],
+                'space_category': r[4],
+                'description': r[5],
+                'square_feet': r[6],
+                'image_360_url': r[7],
+                'sort_order': r[10]
+            } for r in room_rows]
+    
+    # Start background processing
+    background_tasks.add_task(
+        process_narrated_tour_background,
+        property_id,
+        property_data,
+        rooms,
+        voice_id,
+        include_music
+    )
+    
+    return {
+        "message": "Narrated tour generation started",
+        "property_id": property_id,
+        "voice": elevenlabs_engine.voices.get(voice_id, {}).get('name', 'Default'),
+        "status": "processing"
+    }
+
+async def process_narrated_tour_background(
+    property_id: str,
+    property_data: dict,
+    rooms: list,
+    voice_id: str,
+    include_music: bool
+):
+    """Background task to generate narrated tour"""
+    try:
+        tour_dir = TOURS_DIR / property_id
+        tour_dir.mkdir(parents=True, exist_ok=True)
+        
+        # Generate all narrations
+        logger.info(f"Generating narrations for property {property_id}")
+        narrations = await elevenlabs_engine.generate_tour_narration(
+            property_data,
+            rooms,
+            voice_id=voice_id,
+            output_dir=tour_dir / "audio"
+        )
+        
+        if not narrations:
+            logger.error("Failed to generate narrations")
+            return
+        
+        # Create enhanced tour HTML with audio
+        scenes = []
+        for room in rooms:
+            room_name = room['space_name']
+            audio_file = narrations.get(room_name)
+            
+            scene = {
+                'id': room['id'],
+                'name': room_name,
+                'category': room['space_category'],
+                'imageUrl': room['image_360_url'],
+                'pitch': 0,
+                'yaw': 0,
+                'fov': 100,
+                'audioUrl': f"/tours/{property_id}/audio/{audio_file.name}" if audio_file else None
+            }
+            scenes.append(scene)
+        
+        # Generate enhanced HTML with audio player
+        tour_html = generate_narrated_tour_html(
+            property_id,
+            property_data['title'],
+            scenes,
+            narrations.get('intro'),
+            narrations.get('outro')
+        )
+        
+        html_path = tour_dir / "tour_narrated.html"
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(tour_html)
+        
+        tour_url = f"/tours/{property_id}/tour_narrated.html"
+        
+        # Update database
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            # Create narrated_tours table if not exists
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS narrated_tours (
+                    id TEXT PRIMARY KEY,
+                    property_id TEXT NOT NULL,
+                    tour_url TEXT,
+                    voice_id TEXT,
+                    narration_files TEXT,
+                    status TEXT DEFAULT 'completed',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (property_id) REFERENCES properties (id)
+                )
+            """)
+            
+            tour_id = str(uuid.uuid4())
+            await db.execute("""
+                INSERT INTO narrated_tours 
+                (id, property_id, tour_url, voice_id, narration_files, status)
+                VALUES (?, ?, ?, ?, ?, 'completed')
+            """, (
+                tour_id,
+                property_id,
+                tour_url,
+                voice_id,
+                json.dumps([str(p) for p in narrations.values()])
+            ))
+            
+            await db.execute(
+                "UPDATE properties SET has_tour = 1 WHERE id = ?",
+                (property_id,)
+            )
+            
+            await db.commit()
+        
+        logger.info(f"Narrated tour completed for property {property_id}")
+        
+    except Exception as e:
+        logger.error(f"Error in narrated tour generation: {e}", exc_info=True)
+
+def generate_narrated_tour_html(
+    tour_id: str,
+    property_title: str,
+    scenes: list,
+    intro_audio: Path = None,
+    outro_audio: Path = None
+) -> str:
+    """Generate HTML for narrated 360° tour"""
+    scenes_json = json.dumps(scenes)
+    intro_url = f"/tours/{tour_id}/audio/{intro_audio.name}" if intro_audio else ""
+    outro_url = f"/tours/{tour_id}/audio/{outro_audio.name}" if outro_audio else ""
+    
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{property_title} - Virtual Tour</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{ font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; overflow: hidden; }}
+        #panorama {{ width: 100vw; height: 100vh; }}
+        
+        .tour-header {{
+            position: absolute; top: 20px; left: 20px; right: 20px; z-index: 1000;
+            background: rgba(0,0,0,0.8); padding: 15px 25px; border-radius: 12px;
+            backdrop-filter: blur(10px); display: flex; justify-content: space-between; align-items: center;
+        }}
+        
+        .tour-title {{ color: white; font-size: 24px; font-weight: 600; }}
+        .tour-subtitle {{ color: rgba(255,255,255,0.8); font-size: 14px; margin-top: 4px; }}
+        
+        .audio-controls {{
+            position: absolute; top: 100px; right: 20px; z-index: 1000;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 12px;
+            backdrop-filter: blur(10px);
+        }}
+        
+        .audio-btn {{
+            background: rgba(255,255,255,0.2); border: none; color: white;
+            padding: 10px 15px; border-radius: 8px; cursor: pointer;
+            font-size: 14px; margin: 5px 0; width: 100%;
+            transition: all 0.3s;
+        }}
+        
+        .audio-btn:hover {{ background: rgba(255,255,255,0.3); }}
+        .audio-btn.playing {{ background: #3b82f6; }}
+        
+        .scene-nav {{
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 1000;
+            background: rgba(0,0,0,0.8); padding: 15px; border-radius: 12px;
+            backdrop-filter: blur(10px); display: flex; gap: 10px; flex-wrap: wrap;
+            max-width: 90vw; justify-content: center;
+        }}
+        
+        .scene-btn {{
+            background: rgba(255,255,255,0.1); color: white; border: 2px solid rgba(255,255,255,0.3);
+            padding: 10px 20px; border-radius: 8px; cursor: pointer; transition: all 0.3s;
+            font-size: 14px; font-weight: 500;
+        }}
+        
+        .scene-btn:hover {{ background: rgba(255,255,255,0.2); }}
+        .scene-btn.active {{ background: #3b82f6; border-color: #3b82f6; }}
+        
+        .narration-indicator {{
+            position: absolute; bottom: 100px; left: 20px; z-index: 1000;
+            background: rgba(59, 130, 246, 0.9); padding: 12px 20px; border-radius: 8px;
+            color: white; font-size: 14px; display: none; align-items: center; gap: 10px;
+        }}
+        
+        .narration-indicator.active {{ display: flex; }}
+        
+        .audio-wave {{
+            width: 20px; height: 20px; border: 2px solid white;
+            border-radius: 50%; border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }}
+        
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+    </style>
+</head>
+<body>
+    <div class="tour-header">
+        <div>
+            <div class="tour-title">{property_title}</div>
+            <div class="tour-subtitle" id="currentRoom">Loading...</div>
+        </div>
+    </div>
+    
+    <div class="audio-controls">
+        <button id="playIntro" class="audio-btn">🎙️ Play Intro</button>
+        <button id="toggleNarration" class="audio-btn">🔊 Auto Narration: ON</button>
+        <button id="playOutro" class="audio-btn">🎙️ Play Outro</button>
+    </div>
+    
+    <div class="narration-indicator" id="narrationIndicator">
+        <div class="audio-wave"></div>
+        <span>Narration playing...</span>
+    </div>
+    
+    <div id="panorama"></div>
+    <div class="scene-nav" id="sceneNav"></div>
+    
+    <audio id="introAudio" src="{intro_url}"></audio>
+    <audio id="outroAudio" src="{outro_url}"></audio>
+    <audio id="sceneAudio"></audio>
+    
+    <script>
+        const scenes = {scenes_json};
+        let viewer;
+        let currentSceneIndex = 0;
+        let autoNarration = true;
+        
+        const introAudio = document.getElementById('introAudio');
+        const outroAudio = document.getElementById('outroAudio');
+        const sceneAudio = document.getElementById('sceneAudio');
+        const narrationIndicator = document.getElementById('narrationIndicator');
+        
+        function initTour() {{
+            if (scenes.length === 0) return;
+            
+            viewer = pannellum.viewer('panorama', {{
+                default: {{
+                    firstScene: scenes[0].id,
+                    sceneFadeDuration: 1000,
+                    autoLoad: true
+                }},
+                scenes: scenes.reduce((acc, scene) => {{
+                    acc[scene.id] = {{
+                        type: "equirectangular",
+                        panorama: scene.imageUrl,
+                        pitch: 0,
+                        yaw: 0,
+                        hfov: 100,
+                        autoRotate: -2
+                    }};
+                    return acc;
+                }}, {{}})
+            }});
+            
+            createSceneNavigation();
+            updateCurrentRoom(0);
+            
+            // Play intro on load
+            if (autoNarration && introAudio.src) {{
+                setTimeout(() => introAudio.play(), 1000);
+            }}
+        }}
+        
+        function createSceneNavigation() {{
+            const nav = document.getElementById('sceneNav');
+            scenes.forEach((scene, index) => {{
+                const btn = document.createElement('button');
+                btn.className = 'scene-btn' + (index === 0 ? ' active' : '');
+                btn.textContent = scene.name;
+                btn.onclick = () => switchScene(index);
+                nav.appendChild(btn);
+            }});
+        }}
+        
+        function switchScene(index) {{
+            if (index < 0 || index >= scenes.length) return;
+            
+            currentSceneIndex = index;
+            viewer.loadScene(scenes[index].id);
+            updateCurrentRoom(index);
+            
+            document.querySelectorAll('.scene-btn').forEach((btn, i) => {{
+                btn.classList.toggle('active', i === index);
+            }});
+            
+            // Play room narration
+            if (autoNarration && scenes[index].audioUrl) {{
+                sceneAudio.src = scenes[index].audioUrl;
+                sceneAudio.play();
+            }}
+        }}
+        
+        function updateCurrentRoom(index) {{
+            document.getElementById('currentRoom').textContent = scenes[index].name;
+        }}
+        
+        // Audio controls
+        document.getElementById('playIntro').onclick = () => {{
+            stopAllAudio();
+            introAudio.play();
+        }};
+        
+        document.getElementById('playOutro').onclick = () => {{
+            stopAllAudio();
+            outroAudio.play();
+        }};
+        
+        document.getElementById('toggleNarration').onclick = function() {{
+            autoNarration = !autoNarration;
+            this.textContent = autoNarration ? '🔊 Auto Narration: ON' : '🔇 Auto Narration: OFF';
+            this.classList.toggle('playing', autoNarration);
+            if (!autoNarration) stopAllAudio();
+        }};
+        
+        function stopAllAudio() {{
+            introAudio.pause();
+            outroAudio.pause();
+            sceneAudio.pause();
+        }}
+        
+        // Show/hide narration indicator
+        [introAudio, outroAudio, sceneAudio].forEach(audio => {{
+            audio.onplay = () => narrationIndicator.classList.add('active');
+            audio.onpause = () => narrationIndicator.classList.remove('active');
+            audio.onended = () => narrationIndicator.classList.remove('active');
+        }});
+        
+        window.addEventListener('load', initTour);
+    </script>
+</body>
+</html>"""
+
+@api_router.get("/voice-quota")
+async def check_voice_quota():
+    """Check ElevenLabs API quota"""
+    quota = await elevenlabs_engine.check_quota()
+    return quota
 # Analytics
 @api_router.get("/properties/{property_id}/analytics")
 async def get_property_analytics(property_id: str):

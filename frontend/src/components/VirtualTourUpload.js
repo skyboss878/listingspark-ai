@@ -4,7 +4,7 @@ import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api' || 'http://localhost:8000/api';
+const API = process.env.REACT_APP_API_URL + '/api' || 'http://localhost:8000/api';
 
 const VirtualTourUpload = ({ propertyId, onTourCreated }) => {
   const [uploading, setUploading] = useState(false);

@@ -12,7 +12,7 @@ ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineEleme
 ChartJS.defaults.color = '#e0e0e0';
 ChartJS.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api' || 'http://localhost:8000/api';
+const API = process.env.REACT_APP_API_URL + '/api' || 'http://localhost:8000/api';
 
 const Dashboard = () => {
   const { user, logout } = useContext(UserContext);

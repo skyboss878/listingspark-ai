@@ -116,7 +116,7 @@ export default function Pricing() {
 
   const saveSubscription = async (subscriptionId, planType) => {
     try {
-      const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
+      const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       const token = localStorage.getItem('token');
       
       await fetch(`${API_URL}/api/subscription/save`, {

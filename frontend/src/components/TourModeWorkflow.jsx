@@ -5,7 +5,7 @@ import ProCamera360 from './ProCamera360';
 import toast from 'react-hot-toast';
 import axios from 'axios';
 
-const API = process.env.REACT_APP_BACKEND_URL + '/api' || 'http://localhost:8000/api';
+const API = process.env.REACT_APP_API_URL + '/api' || 'http://localhost:8000/api';
 
 // Professional room templates for different property types
 const PROPERTY_TEMPLATES = {

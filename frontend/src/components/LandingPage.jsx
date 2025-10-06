@@ -6,6 +6,7 @@ import axios from 'axios';
 import { UserContext } from '../App';
 
 const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+
 const LandingPage = () => {
   const [isSignupOpen, setIsSignupOpen] = useState(false);
   const [isLoginOpen, setIsLoginOpen] = useState(false);
@@ -28,6 +29,7 @@ const LandingPage = () => {
       const userData = response.data;
       login(userData);
       toast.success('Account created! Please select a plan to continue.');
+      setIsSignupOpen(false);
       navigate('/pricing');
     } catch (error) {
       toast.error('Failed to create account. Please try again.');
@@ -38,17 +40,18 @@ const LandingPage = () => {
   const handleLogin = async (e) => {
     e.preventDefault();
     try {
-      // Add your login API call here
       const response = await axios.post(`${API_URL}/api/login`, {
         email: formData.email,
         password: formData.password
       });
-      
+
       const userData = response.data;
       login(userData);
-      
+      setIsLoginOpen(false);
+
       // Check if user has active subscription
       if (userData.subscription && userData.subscription.active) {
+        toast.success('Welcome back!');
         navigate('/dashboard');
       } else {
         toast.info('Please select a subscription plan');
@@ -60,14 +63,14 @@ const LandingPage = () => {
     }
   };
 
-     const handleInputChange = (e) => {
-  console.log('Input changed:', e.target.name, e.target.value);
-  setFormData({
-    ...formData,
-    [e.target.name]: e.target.value
-  });
-};
+  const handleInputChange = (e) => {
+    setFormData({
+      ...formData,
+      [e.target.name]: e.target.value
+    });
+  };
 
+  return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       {/* Header */}
       <motion.header
@@ -299,7 +302,7 @@ const LandingPage = () => {
                   name="name"
                   value={formData.name}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   placeholder="Enter your full name"
                   required
                 />
@@ -312,7 +315,7 @@ const LandingPage = () => {
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   placeholder="Enter your email"
                   required
                 />
@@ -325,7 +328,7 @@ const LandingPage = () => {
                   name="password"
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   placeholder="Create a password"
                   required
                 />
@@ -389,7 +392,7 @@ const LandingPage = () => {
                   name="email"
                   value={formData.email}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   placeholder="Enter your email"
                   required
                 />
@@ -402,7 +405,7 @@ const LandingPage = () => {
                   name="password"
                   value={formData.password}
                   onChange={handleInputChange}
-                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-transparent text-gray-900"
                   placeholder="Enter your password"
                   required
                 />

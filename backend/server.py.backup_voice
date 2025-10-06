@@ -437,7 +437,6 @@ app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "https://wonderful-narwhal-f556de.netlify.app",  # your Netlify frontend
-        "http://192.168.1.85:3000",0
         "http://localhost:3000",  # for local frontend testing
         "http://localhost:8000"   # optional, if testing backend directly
     ],
@@ -2170,11 +2169,7 @@ async def get_video_tour(property_id: str):
             }
 
 @api_router.post("/api/properties/{property_id}/generate-viral-content")
-async def generate_viral_content(
-    property_id: str,
-    platforms: Optional[List[str]] = None,
-    voice: Optional[str] = 'professional_female'
-):
+async def generate_viral_content(property_id: str, platforms: Optional[List[str]] = None):
     """Generate AI-powered viral social media content"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute("SELECT * FROM properties WHERE id = ?", (property_id,)) as cursor:
@@ -2192,7 +2187,7 @@ async def generate_viral_content(
         platforms = ["instagram", "tiktok", "facebook", "twitter"]
     
     try:
-        content_results = await viral_content_engine.generate_batch_content(property_data, platforms, voice=voice)
+        content_results = await viral_content_engine.generate_batch_content(property_data, platforms)
         viral_contents = []
         
         async with aiosqlite.connect(DATABASE_PATH) as db:

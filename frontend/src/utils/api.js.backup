@@ -68,19 +68,18 @@ const api = {
 
   // Viral Content
   viralContent: {
-    generate: async (propertyId, options = {}) => {
-      const response = await axios.post(
-        `/properties/${propertyId}/viral-content`,
-        { voice: options.voice || 'professional_female' }
-      );
+    generate: async (propertyId) => {
+      const response = await axios.post(`/properties/${propertyId}/viral-content`);
       return response.data;
     },
-
+    
     get: async (propertyId) => {
       const response = await axios.get(`/properties/${propertyId}/viral-content`);
       return response.data;
     }
   },
+
+  // Analytics
   analytics: {
     get: async (propertyId) => {
       const response = await axios.get(`/properties/${propertyId}/analytics`);

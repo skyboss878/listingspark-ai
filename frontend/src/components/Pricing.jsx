@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import './Pricing.css';
 
@@ -50,75 +50,11 @@ const pricingTiers = {
 export default function Pricing() {
   const navigate = useNavigate();
 
-  useEffect(() => {
-    // Load PayPal SDK
-    const script = document.createElement('script');
-    script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&vault=true&intent=subscription`;
-    script.async = true;
-    script.onload = () => {
-      // Initialize all PayPal buttons after SDK loads
-      initializePayPalButtons();
-    };
-    document.body.appendChild(script);
-
-    return () => {
-      // Cleanup script on unmount
-      const scripts = document.querySelectorAll(`script[src*="paypal.com/sdk"]`);
-      scripts.forEach(s => s.remove());
-    };
-  }, []);
-
-  const initializePayPalButtons = () => {
-    Object.entries(pricingTiers).forEach(([key, tier]) => {
-      const containerId = `paypal-button-${key}`;
-      const container = document.getElementById(containerId);
-      
-      if (container && window.paypal) {
-        // Clear existing buttons
-        container.innerHTML = '';
-        
-        window.paypal.Buttons({
-          style: {
-            shape: 'rect',
-            color: 'blue',
-            layout: 'vertical',
-            label: 'subscribe'
-          },
-          createSubscription: function(data, actions) {
-            return actions.subscription.create({
-              plan_id: tier.planId
-            });
-          },
-          onApprove: function(data, actions) {
-            // Save subscription ID to backend
-            saveSubscription(data.subscriptionID, key);
-            
-            // Redirect to dashboard
-            navigate('/dashboard', { 
-              state: { 
-                message: 'Subscription activated successfully!',
-                subscriptionId: data.subscriptionID,
-                plan: key
-              }
-            });
-          },
-          onError: function(err) {
-            console.error('PayPal error:', err);
-            alert('Payment failed. Please try again.');
-          },
-          onCancel: function(data) {
-            console.log('Payment cancelled:', data);
-          }
-        }).render(`#${containerId}`);
-      }
-    });
-  };
-
   const saveSubscription = async (subscriptionId, planType) => {
     try {
       const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
       const token = localStorage.getItem('token');
-      
+
       await fetch(`${API_URL}/api/subscription/save`, {
         method: 'POST',
         headers: {
@@ -136,23 +72,87 @@ export default function Pricing() {
     }
   };
 
+  const initializePayPalButtons = useCallback(() => {
+    Object.entries(pricingTiers).forEach(([key, tier]) => {
+      const containerId = `paypal-button-${key}`;
+      const container = document.getElementById(containerId);
+
+      if (container && window.paypal) {
+        // Clear existing buttons
+        container.innerHTML = '';
+
+        window.paypal.Buttons({
+          style: {
+            shape: 'rect',
+            color: 'blue',
+            layout: 'vertical',
+            label: 'subscribe'
+          },
+          createSubscription: function(data, actions) {
+            return actions.subscription.create({
+              plan_id: tier.planId
+            });
+          },
+          onApprove: function(data, actions) {
+            // Save subscription ID to backend
+            saveSubscription(data.subscriptionID, key);
+
+            // Redirect to dashboard
+            navigate('/dashboard', {
+              state: {
+                message: 'Subscription activated successfully!',
+                subscriptionId: data.subscriptionID,
+                plan: key
+              }
+            });
+          },
+          onError: function(err) {
+            console.error('PayPal error:', err);
+            alert('Payment failed. Please try again.');
+          },
+          onCancel: function(data) {
+            console.log('Payment cancelled:', data);
+          }
+        }).render(`#${containerId}`);
+      }
+    });
+  }, [navigate]);
+
+  useEffect(() => {
+    // Load PayPal SDK
+    const script = document.createElement('script');
+    script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&vault=true&intent=subscription`;
+    script.async = true;
+    script.onload = () => {
+      // Initialize all PayPal buttons after SDK loads
+      initializePayPalButtons();
+    };
+    document.body.appendChild(script);
+
+    return () => {
+      // Cleanup script on unmount
+      const scripts = document.querySelectorAll(`script[src*="paypal.com/sdk"]`);
+      scripts.forEach(s => s.remove());
+    };
+  }, [initializePayPalButtons]);
+
   return (
     <div className="pricing-container">
       <h1>Choose Your Plan</h1>
       <p className="pricing-subtitle">Start your free trial today - cancel anytime</p>
-      
+
       <div className="pricing-grid">
         {Object.entries(pricingTiers).map(([key, tier]) => (
           <div key={key} className={`pricing-card ${key === 'professional' ? 'popular' : ''}`}>
             {key === 'professional' && <div className="popular-badge">Most Popular</div>}
-            
+
             <h2>{tier.name}</h2>
             <div className="price">
               <span className="currency">$</span>
               <span className="amount">{tier.price}</span>
               <span className="period">/month</span>
             </div>
-            
+
             <ul className="features">
               {tier.features.map((feature, idx) => (
                 <li key={idx}>
@@ -160,7 +160,7 @@ export default function Pricing() {
                 </li>
               ))}
             </ul>
-            
+
             {/* PayPal Button Container */}
             <div id={`paypal-button-${key}`} className="paypal-button-wrapper"></div>
           </div>

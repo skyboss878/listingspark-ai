@@ -19,12 +19,14 @@ const platforms = [
   const [selectedPlatform, setSelectedPlatform] = useState('instagram');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
- const voiceOptions = [
-  { id: 'professional_female', name: 'Professional Female (Luxury)', icon: '👩‍💼' },
-  { id: 'professional_male', name: 'Professional Male (Commercial)', icon: '👨‍💼' },
-  { id: 'friendly_female', name: 'Friendly Female (Family)', icon: '👩' },
-  { id: 'luxury_male', name: 'Luxury Male (High-End)', icon: '🎩' }
-];
+  const [selectedVoice, setSelectedVoice] = useState('professional_female');
+  
+  const voiceOptions = [
+    { id: 'professional_female', name: 'Professional Female (Luxury)', icon: '👩‍💼' },
+    { id: 'professional_male', name: 'Professional Male (Commercial)', icon: '👨‍💼' },
+    { id: 'friendly_female', name: 'Friendly Female (Family)', icon: '👩' },
+    { id: 'luxury_male', name: 'Luxury Male (High-End)', icon: '🎩' }
+  ];
 
   // Define generateContent FIRST (before loadContent that depends on it)
   const generateContent = useCallback(async () => {
@@ -32,7 +34,9 @@ const platforms = [
       setGenerating(true);
       toast.loading('Generating viral content with AI...', { id: 'generate' });
 
-      const result = await api.viralContent.generate(propertyId);
+      const result = await api.viralContent.generate(propertyId, {
+        voice: selectedVoice
+      });
 
       setContent(result.content);
       toast.success('Viral content generated!', { id: 'generate' });
@@ -42,8 +46,7 @@ const platforms = [
     } finally {
       setGenerating(false);
     }
-  }, [propertyId]);
-
+  }, [propertyId, selectedVoice]);
   // Define loadContent SECOND (after generateContent)
   const loadContent = useCallback(async () => {
     try {
@@ -134,7 +137,30 @@ const platforms = [
             ))}
           </div>
         </motion.div>
-
+         {/* Voice Selector - ADD THIS NEW SECTION */}
+        <motion.div
+          initial={{ y: 20, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          className="mb-8"
+        >
+          <label className="block text-sm font-medium mb-4">Voice Narration Style</label>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {voiceOptions.map((voice) => (
+              <button
+                key={voice.id}
+                onClick={() => setSelectedVoice(voice.id)}
+                className={`p-4 rounded-xl border-2 transition-all ${
+                  selectedVoice === voice.id
+                    ? 'border-purple-500 bg-purple-500/20'
+                    : 'border-white/20 bg-white/5 hover:border-white/40'
+                }`}
+              >
+                <div className="text-3xl mb-2">{voice.icon}</div>
+                <div className="text-sm">{voice.name}</div>
+              </button>
+            ))}
+          </div>
+        </motion.div>
         {/* Content Display */}
         <motion.div
           initial={{ y: 20, opacity: 0 }}

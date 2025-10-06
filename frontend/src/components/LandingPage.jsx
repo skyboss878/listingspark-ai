@@ -60,10 +60,14 @@ const LandingPage = () => {
     }
   };
 
-const handleInputChange = (e) => {
+     const handleInputChange = (e) => {
   console.log('Input changed:', e.target.name, e.target.value);
   setFormData({
-  return (
+    ...formData,
+    [e.target.name]: e.target.value
+  });
+};
+
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900">
       {/* Header */}
       <motion.header

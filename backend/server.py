@@ -140,7 +140,12 @@ STANDARD_AMENITIES = {
 class UserCreate(BaseModel):
     email: str
     name: str
+    password: str
 
+
+class UserLogin(BaseModel):
+    email: str
+    password: str
 class User(BaseModel):
     id: str
     email: str
@@ -464,8 +469,8 @@ async def create_user(user_data: UserCreate):
     async with aiosqlite.connect(DATABASE_PATH) as db:
         try:
             await db.execute(
-                "INSERT INTO users (id, email, name, plan) VALUES (?, ?, ?, ?)",
-                (user_id, user_data.email, user_data.name, "free")
+                "INSERT INTO users (id, email, name, password, plan) VALUES (?, ?, ?, ?, ?)",
+                (user_id, user_data.email, user_data.name, user_data.password, "free")
             )
             await db.commit()
             return {
@@ -479,31 +484,20 @@ async def create_user(user_data: UserCreate):
             raise HTTPException(400, "Email already exists")
 
 @app.post("/api/login")
-async def login(user_data: UserCreate):
+async def login(user_data: UserLogin):
     """Login or create user"""
     async with aiosqlite.connect(DATABASE_PATH) as db:
         async with db.execute(
-            "SELECT * FROM users WHERE email = ?", (user_data.email,)
+            "SELECT * FROM users WHERE email = ? AND password = ?", (user_data.email, user_data.password)
         ) as cursor:
             row = await cursor.fetchone()
             if row:
                 return {
                     "id": row[0], "email": row[1], "name": row[2],
-                    "plan": row[3], "listings_created": row[4]
+                    "plan": row[4], "listings_created": row[5]
                 }
-            
-            # Create new user if doesn't exist
-            user_id = str(uuid.uuid4())
-            await db.execute(
-                "INSERT INTO users (id, email, name) VALUES (?, ?, ?)",
-                (user_id, user_data.email, user_data.name)
-            )
-            await db.commit()
-            return {
-                "id": user_id, "email": user_data.email,
-                "name": user_data.name, "plan": "free", "listings_created": 0
-            }
-# Database initialization
+            else:
+                raise HTTPException(401, "Invalid email or password")
 async def init_db():
     async with aiosqlite.connect(DATABASE_PATH) as db:
         await db.execute("""
@@ -511,6 +505,7 @@ async def init_db():
                 id TEXT PRIMARY KEY,
                 email TEXT UNIQUE NOT NULL,
                 name TEXT NOT NULL,
+                password TEXT NOT NULL,
                 plan TEXT DEFAULT 'free',
                 listings_created INTEGER DEFAULT 0,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

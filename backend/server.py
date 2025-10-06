@@ -435,7 +435,12 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://wonderful-narwhal-f556de.netlify.app",
+        "https://listingspark-ai-2.onrender.com",
+        "http://localhost:3000",
+        "http://localhost:8000"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

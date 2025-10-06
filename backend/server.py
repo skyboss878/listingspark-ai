@@ -6,18 +6,21 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
 from contextlib import asynccontextmanager
-# Import Platform Module
 import aiosqlite
 from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+from fastapi import FastAPI, HTTPException, UploadFile, File, BackgroundTasks, Body, Form
 from platform_integrations import platform_manager, ListingData, ListingStatus
 from pydantic import BaseModel
 from app.ai_content_engine import ViralContentEngine
+import uuid
+import json
 from openai import AsyncOpenAI
 from PIL import Image
 from elevenlabs_voice import elevenlabs_engine
+from ai_image_enhancer import ai_enhancer
 from dotenv import load_dotenv
 load_dotenv()
 from video_tour_generator_pro import premium_video_generator, VideoConfig, BrandingConfig
@@ -1276,6 +1279,725 @@ async def get_standard_amenities():
     """Get all standard amenities organized by category"""
     return STANDARD_AMENITIES
 
+api_router.post("/properties/{property_id}/upload-room-360")
+async def upload_room_with_enhancement(
+    property_id: str,
+    background_tasks: BackgroundTasks,
+    file: UploadFile = File(...),
+    room_name: str = Form(...),
+    room_type: str = Form(...),
+    enhance: bool = Form(True)
+):
+    """Upload 360° room image with AI enhancement"""
+    
+    # Create room entry
+    room_id = str(uuid.uuid4())
+    upload_path = UPLOADS_DIR / f"{room_id}_{file.filename}"
+    
+    # Save uploaded file
+    with open(upload_path, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    
+    # AI Enhancement if requested
+    if enhance:
+        try:
+            enhanced_path = ai_enhancer.enhance_real_estate_photo(
+                upload_path,
+                output_path=upload_path.parent / f"{room_id}_enhanced.jpg",
+                enhancement_level="standard"
+            )
+            upload_path = enhanced_path
+        except Exception as e:
+            logger.error(f"Enhancement failed: {e}")
+    
+    # Validate 360 image
+    is_valid, message = Tour360Processor.validate_360_image(str(upload_path))
+    if not is_valid:
+        upload_path.unlink()
+        raise HTTPException(400, message)
+    
+    # Process in background
+    background_tasks.add_task(
+        process_room_360_background,
+        room_id,
+        property_id,
+        str(upload_path),
+        room_name,
+        room_type
+    )
+    
+    return {
+        "room_id": room_id,
+        "message": "Processing enhanced 360° image",
+        "status": "processing"
+    }
+
+@api_router.post("/properties/{property_id}/generate-complete-tour")
+async def generate_complete_tour(
+    property_id: str,
+    background_tasks: BackgroundTasks,
+    rooms: list = Body(...),
+    voice_narration: bool = True,
+    add_music: bool = True,
+    property_type: str = "house"
+):
+    """Generate complete professional tour with narration and music"""
+    
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        # Get property data
+        async with db.execute(
+            "SELECT * FROM properties WHERE id = ?", (property_id,)
+        ) as cursor:
+            prop_row = await cursor.fetchone()
+            if not prop_row:
+                raise HTTPException(404, "Property not found")
+            
+            property_data = {
+                'id': prop_row[0],
+                'title': prop_row[2],
+                'description': prop_row[3],
+                'address': prop_row[4],
+                'price': prop_row[5],
+                'property_type': prop_row[6],
+                'bedrooms': prop_row[7],
+                'bathrooms': prop_row[8],
+                'square_feet': prop_row[9]
+            }
+        
+        # Get all room data from database
+        room_ids = [r['imageId'] for r in rooms]
+        room_data = []
+        
+        for room_id in room_ids:
+            async with db.execute(
+                "SELECT * FROM rooms WHERE id = ?", (room_id,)
+            ) as cursor:
+                room_row = await cursor.fetchone()
+                if room_row:
+                    room_data.append({
+                        'id': room_row[0],
+                        'space_name': room_row[2],
+                        'space_type': room_row[3],
+                        'space_category': room_row[4],
+                        'description': room_row[5],
+                        'image_360_url': room_row[7]
+                    })
+    
+    # Start background processing
+    background_tasks.add_task(
+        process_complete_tour_background,
+        property_id,
+        property_data,
+        room_data,
+        voice_narration,
+        add_music,
+        property_type
+    )
+    
+    return {
+        "message": "Professional tour generation started",
+        "property_id": property_id,
+        "total_rooms": len(room_data),
+        "estimated_time_minutes": len(room_data) * 2
+    }
+
+async def process_complete_tour_background(
+    property_id: str,
+    property_data: dict,
+    rooms: list,
+    voice_narration: bool,
+    add_music: bool,
+    property_type: str
+):
+    """Background task for complete tour generation"""
+    try:
+        tour_dir = TOURS_DIR / property_id
+        tour_dir.mkdir(parents=True, exist_ok=True)
+        
+        narrations = {}
+        
+        # Generate voice narration if enabled
+        if voice_narration and elevenlabs_engine.enabled:
+            logger.info(f"Generating narrations for {len(rooms)} rooms")
+            
+            # Choose voice based on property type
+            voice_map = {
+                'luxury': 'luxury_male',
+                'commercial': 'professional_male',
+                'apartment': 'friendly_female',
+                'house': 'professional_female'
+            }
+            voice_id = voice_map.get(property_type, 'professional_female')
+            
+            narrations = await elevenlabs_engine.generate_tour_narration(
+                property_data,
+                rooms,
+                voice_id=voice_id,
+                output_dir=tour_dir / "audio"
+            )
+        
+        # Build scene list with narration
+        scenes = []
+        for i, room in enumerate(rooms):
+            room_name = room['space_name']
+            audio_file = narrations.get(room_name)
+            
+            scene = {
+                'id': room['id'],
+                'name': room_name,
+                'category': room.get('space_category', ''),
+                'imageUrl': room['image_360_url'],
+                'pitch': 0,
+                'yaw': 0,
+                'fov': 100,
+                'audioUrl': f"/tours/{property_id}/audio/{audio_file.name}" if audio_file else None,
+                'order': i
+            }
+            scenes.append(scene)
+        
+        # Generate enhanced HTML tour
+        tour_html = generate_professional_tour_html(
+            property_id,
+            property_data,
+            scenes,
+            narrations.get('intro'),
+            narrations.get('outro'),
+            add_music
+        )
+        
+        html_path = tour_dir / "tour.html"
+        with open(html_path, 'w', encoding='utf-8') as f:
+            f.write(tour_html)
+        
+        tour_url = f"/tours/{property_id}/tour.html"
+        
+        # Update database
+        async with aiosqlite.connect(DATABASE_PATH) as db:
+            tour_id = str(uuid.uuid4())
+            
+            await db.execute("""
+                CREATE TABLE IF NOT EXISTS complete_tours (
+                    id TEXT PRIMARY KEY,
+                    property_id TEXT NOT NULL,
+                    tour_url TEXT,
+                    voice_enabled BOOLEAN,
+                    music_enabled BOOLEAN,
+                    total_scenes INTEGER,
+                    property_type TEXT,
+                    status TEXT DEFAULT 'completed',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    FOREIGN KEY (property_id) REFERENCES properties (id)
+                )
+            """)
+            
+            await db.execute("""
+                INSERT INTO complete_tours 
+                (id, property_id, tour_url, voice_enabled, music_enabled, 
+                 total_scenes, property_type, status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, 'completed')
+            """, (
+                tour_id,
+                property_id,
+                tour_url,
+                voice_narration,
+                add_music,
+                len(scenes),
+                property_type
+            ))
+            
+            await db.execute(
+                "UPDATE properties SET has_tour = 1 WHERE id = ?",
+                (property_id,)
+            )
+            
+            await db.commit()
+        
+        logger.info(f"Complete professional tour generated: {property_id}")
+        
+    except Exception as e:
+        logger.error(f"Complete tour generation failed: {e}", exc_info=True)
+
+def generate_professional_tour_html(
+    property_id: str,
+    property_data: dict,
+    scenes: list,
+    intro_audio: Path = None,
+    outro_audio: Path = None,
+    add_music: bool = False
+) -> str:
+    """Generate professional HTML tour with all features"""
+    
+    scenes_json = json.dumps(scenes)
+    intro_url = f"/tours/{property_id}/audio/{intro_audio.name}" if intro_audio else ""
+    outro_url = f"/tours/{property_id}/audio/{outro_audio.name}" if outro_audio else ""
+    
+    # Background music URLs (you'll need to host these)
+    music_urls = {
+        'luxury': '/static/music/luxury_ambient.mp3',
+        'modern': '/static/music/modern_upbeat.mp3',
+        'relaxed': '/static/music/relaxed_acoustic.mp3'
+    }
+    music_url = music_urls.get(property_data.get('property_type', ''), music_urls['modern'])
+    
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{property_data['title']} - Professional Virtual Tour</title>
+    <meta name="description" content="{property_data['description']}">
+    
+    <!-- Open Graph / Facebook -->
+    <meta property="og:type" content="website">
+    <meta property="og:title" content="{property_data['title']}">
+    <meta property="og:description" content="{property_data['description']}">
+    
+    <!-- Twitter -->
+    <meta property="twitter:card" content="summary_large_image">
+    <meta property="twitter:title" content="{property_data['title']}">
+    
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.css"/>
+    <script src="https://cdn.jsdelivr.net/npm/pannellum@2.5.6/build/pannellum.js"></script>
+    
+    <style>
+        * {{ margin: 0; padding: 0; box-sizing: border-box; }}
+        body {{
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica', sans-serif;
+            overflow: hidden;
+            background: #000;
+        }}
+        
+        #panorama {{ width: 100vw; height: 100vh; }}
+        
+        /* Premium Header */
+        .tour-header {{
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.9), transparent);
+            padding: 25px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }}
+        
+        .property-info {{
+            color: white;
+        }}
+        
+        .property-title {{
+            font-size: 28px;
+            font-weight: 700;
+            margin-bottom: 8px;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }}
+        
+        .property-details {{
+            font-size: 16px;
+            opacity: 0.9;
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }}
+        
+        .detail-item {{
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }}
+        
+        .property-price {{
+            font-size: 24px;
+            font-weight: 700;
+            color: #4ade80;
+            text-shadow: 0 2px 10px rgba(0,0,0,0.5);
+        }}
+        
+        /* Audio Controls */
+        .audio-controls {{
+            position: absolute;
+            top: 120px;
+            right: 30px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            padding: 20px;
+            border-radius: 16px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }}
+        
+        .audio-btn {{
+            background: rgba(255,255,255,0.1);
+            border: 1px solid rgba(255,255,255,0.2);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 6px 0;
+            width: 100%;
+            transition: all 0.3s;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }}
+        
+        .audio-btn:hover {{ background: rgba(255,255,255,0.2); }}
+        .audio-btn.active {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); }}
+        
+        /* Navigation */
+        .scene-nav {{
+            position: absolute;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 1000;
+            background: rgba(0,0,0,0.85);
+            backdrop-filter: blur(10px);
+            padding: 20px 25px;
+            border-radius: 16px;
+            display: flex;
+            gap: 12px;
+            max-width: 90vw;
+            overflow-x: auto;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+        }}
+        
+        .scene-btn {{
+            background: rgba(255,255,255,0.1);
+            color: white;
+            border: 2px solid rgba(255,255,255,0.2);
+            padding: 12px 24px;
+            border-radius: 12px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            white-space: nowrap;
+            transition: all 0.3s;
+        }}
+        
+        .scene-btn:hover {{ 
+            background: rgba(255,255,255,0.2);
+            transform: translateY(-2px);
+        }}
+        
+        .scene-btn.active {{ 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            border-color: #667eea;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }}
+        
+        /* Narration Indicator */
+        .narration-indicator {{
+            position: absolute;
+            bottom: 120px;
+            left: 30px;
+            z-index: 1000;
+            background: rgba(102, 126, 234, 0.95);
+            padding: 15px 25px;
+            border-radius: 12px;
+            color: white;
+            font-size: 14px;
+            font-weight: 600;
+            display: none;
+            align-items: center;
+            gap: 12px;
+            box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
+        }}
+        
+        .narration-indicator.active {{ display: flex; }}
+        
+        .audio-wave {{
+            width: 24px;
+            height: 24px;
+            border: 3px solid white;
+            border-radius: 50%;
+            border-top-color: transparent;
+            animation: spin 1s linear infinite;
+        }}
+        
+        @keyframes spin {{
+            to {{ transform: rotate(360deg); }}
+        }}
+        
+        /* Loading Screen */
+        .loading-screen {{
+            position: fixed;
+            inset: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 9999;
+            transition: opacity 0.5s;
+        }}
+        
+        .loading-screen.hidden {{
+            opacity: 0;
+            pointer-events: none;
+        }}
+        
+        .loading-content {{
+            text-align: center;
+            color: white;
+        }}
+        
+        .loading-spinner {{
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }}
+        
+        /* Branding */
+        .powered-by {{
+            position: absolute;
+            bottom: 30px;
+            left: 30px;
+            z-index: 1000;
+            background: rgba(0,0,0,0.7);
+            padding: 10px 20px;
+            border-radius: 8px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+        }}
+        
+        .powered-by a {{
+            color: #667eea;
+            text-decoration: none;
+        }}
+    </style>
+</head>
+<body>
+    <!-- Loading Screen -->
+    <div class="loading-screen" id="loadingScreen">
+        <div class="loading-content">
+            <div class="loading-spinner"></div>
+            <h2 style="font-size: 24px; margin-bottom: 10px;">Loading Professional Tour...</h2>
+            <p style="opacity: 0.9;">Preparing your immersive experience</p>
+        </div>
+    </div>
+
+    <!-- Tour Header -->
+    <div class="tour-header">
+        <div class="property-info">
+            <div class="property-title">{property_data['title']}</div>
+            <div class="property-details">
+                <span class="detail-item">📍 {property_data['address']}</span>
+                <span class="detail-item">🛏️ {property_data.get('bedrooms', '')} bed</span>
+                <span class="detail-item">🚿 {property_data.get('bathrooms', '')} bath</span>
+                <span class="detail-item">📐 {property_data.get('square_feet', '')} ft²</span>
+            </div>
+        </div>
+        <div class="property-price">{property_data['price']}</div>
+    </div>
+    
+    <!-- Audio Controls -->
+    <div class="audio-controls">
+        <button id="playIntro" class="audio-btn">🎙️ Play Intro</button>
+        <button id="toggleNarration" class="audio-btn active">🔊 Narration: ON</button>
+        <button id="toggleMusic" class="audio-btn {"active" if add_music else ""}">🎵 Music: {"ON" if add_music else "OFF"}</button>
+        <button id="playOutro" class="audio-btn">🎙️ Play Outro</button>
+    </div>
+    
+    <!-- Narration Indicator -->
+    <div class="narration-indicator" id="narrationIndicator">
+        <div class="audio-wave"></div>
+        <span>Playing narration...</span>
+    </div>
+    
+    <!-- Panorama Viewer -->
+    <div id="panorama"></div>
+    
+    <!-- Scene Navigation -->
+    <div class="scene-nav" id="sceneNav"></div>
+    
+    <!-- Branding -->
+    <div class="powered-by">
+        Powered by <a href="https://listingspark.ai" target="_blank">ListingSpark AI</a>
+    </div>
+    
+    <!-- Audio Elements -->
+    <audio id="introAudio" src="{intro_url}" preload="auto"></audio>
+    <audio id="outroAudio" src="{outro_url}" preload="auto"></audio>
+    <audio id="sceneAudio" preload="auto"></audio>
+    <audio id="backgroundMusic" src="{music_url if add_music else ''}" loop preload="auto" volume="0.3"></audio>
+    
+    <script>
+        const scenes = {scenes_json};
+        let viewer;
+        let currentSceneIndex = 0;
+        let autoNarration = true;
+        let musicEnabled = {"true" if add_music else "false"};
+        
+        const introAudio = document.getElementById('introAudio');
+        const outroAudio = document.getElementById('outroAudio');
+        const sceneAudio = document.getElementById('sceneAudio');
+        const backgroundMusic = document.getElementById('backgroundMusic');
+        const narrationIndicator = document.getElementById('narrationIndicator');
+        const loadingScreen = document.getElementById('loadingScreen');
+        
+        function initTour() {{
+            if (scenes.length === 0) {{
+                alert('No scenes available for this tour');
+                return;
+            }}
+            
+            // Initialize Pannellum viewer
+            viewer = pannellum.viewer('panorama', {{
+                default: {{
+                    firstScene: scenes[0].id,
+                    sceneFadeDuration: 1500,
+                    autoLoad: true
+                }},
+                scenes: scenes.reduce((acc, scene) => {{
+                    acc[scene.id] = {{
+                        type: "equirectangular",
+                        panorama: scene.imageUrl,
+                        pitch: 0,
+                        yaw: 0,
+                        hfov: 100,
+                        autoRotate: -2,
+                        autoRotateInactivityDelay: 3000
+                    }};
+                    return acc;
+                }}, {{}})
+            }});
+            
+            viewer.on('load', () => {{
+                setTimeout(() => {{
+                    loadingScreen.classList.add('hidden');
+                }}, 1000);
+            }});
+            
+            createSceneNavigation();
+            updateCurrentRoom(0);
+            
+            // Auto-play intro
+            if (autoNarration && introAudio.src) {{
+                setTimeout(() => introAudio.play(), 2000);
+            }}
+            
+            // Start background music
+            if (musicEnabled && backgroundMusic.src) {{
+                backgroundMusic.play().catch(e => console.log('Music autoplay blocked'));
+            }}
+        }}
+        
+        function createSceneNavigation() {{
+            const nav = document.getElementById('sceneNav');
+            scenes.forEach((scene, index) => {{
+                const btn = document.createElement('button');
+                btn.className = 'scene-btn' + (index === 0 ? ' active' : '');
+                btn.textContent = scene.name;
+                btn.onclick = () => switchScene(index);
+                nav.appendChild(btn);
+            }});
+        }}
+        
+        function switchScene(index) {{
+            if (index < 0 || index >= scenes.length) return;
+            
+            currentSceneIndex = index;
+            viewer.loadScene(scenes[index].id);
+            updateCurrentRoom(index);
+            
+            document.querySelectorAll('.scene-btn').forEach((btn, i) => {{
+                btn.classList.toggle('active', i === index);
+            }});
+            
+            // Play room narration
+            if (autoNarration && scenes[index].audioUrl) {{
+                sceneAudio.src = scenes[index].audioUrl;
+                sceneAudio.play();
+            }}
+        }}
+        
+        function updateCurrentRoom(index) {{
+            // Update any UI showing current room
+        }}
+        
+        // Audio controls
+        document.getElementById('playIntro').onclick = () => {{
+            stopSceneAudio();
+            introAudio.play();
+        }};
+        
+        document.getElementById('playOutro').onclick = () => {{
+            stopSceneAudio();
+            outroAudio.play();
+        }};
+        
+        document.getElementById('toggleNarration').onclick = function() {{
+            autoNarration = !autoNarration;
+            this.innerHTML = autoNarration ? '🔊 Narration: ON' : '🔇 Narration: OFF';
+            this.classList.toggle('active', autoNarration);
+            if (!autoNarration) stopSceneAudio();
+        }};
+        
+        document.getElementById('toggleMusic').onclick = function() {{
+            musicEnabled = !musicEnabled;
+            this.innerHTML = musicEnabled ? '🎵 Music: ON' : '🎵 Music: OFF';
+            this.classList.toggle('active', musicEnabled);
+            
+            if (musicEnabled) {{
+                backgroundMusic.play();
+            }} else {{
+                backgroundMusic.pause();
+            }}
+        }};
+        
+        function stopSceneAudio() {{
+            introAudio.pause();
+            outroAudio.pause();
+            sceneAudio.pause();
+        }}
+        
+        // Show/hide narration indicator
+        [introAudio, outroAudio, sceneAudio].forEach(audio => {{
+            audio.onplay = () => narrationIndicator.classList.add('active');
+            audio.onpause = () => narrationIndicator.classList.remove('active');
+            audio.onended = () => narrationIndicator.classList.remove('active');
+        }});
+        
+        // Keyboard navigation
+        document.addEventListener('keydown', (e) => {{
+            if (e.key === 'ArrowLeft') {{
+                switchScene(Math.max(0, currentSceneIndex - 1));
+            }} else if (e.key === 'ArrowRight') {{
+                switchScene(Math.min(scenes.length - 1, currentSceneIndex + 1));
+            }}
+        }});
+        
+        window.addEventListener('load', initTour);
+    </script>
+</body>
+</html>"""
+
+# Add tour analytics endpoint
+@api_router.get("/properties/{property_id}/tour-analytics")
+async def get_tour_analytics(property_id: str):
+    """Get analytics for property tour"""
+    async with aiosqlite.connect(DATABASE_PATH) as db:
+        async with db.execute("""
+            SELECT COUNT(*) as views, 
+                   AVG(CAST(strftime('%s', 'now') - strftime('%s', created_at) AS REAL)) as avg_duration
+            FROM tour_views 
+            WHERE property_id = ?
+        """, (property_id,)) as cursor:
+            row = await cursor.fetchone()
+            return {
+                "total_views": row[0] if row else 0,
+                "avg_duration_seconds": row[1] if row else 0
+            }
 
 # ============================================================================
 # PLATFORM INTEGRATION ENDPOINTS

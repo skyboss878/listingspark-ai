@@ -12,13 +12,19 @@ const platforms = [
   { id: 'tiktok', name: 'TikTok', icon: '🎵' },
 ];
 
-const ViralContentGenerator = () => {
+  const ViralContentGenerator = () => {
   const { propertyId } = useParams();
   const navigate = useNavigate();
   const [content, setContent] = useState([]);
   const [selectedPlatform, setSelectedPlatform] = useState('instagram');
   const [loading, setLoading] = useState(false);
   const [generating, setGenerating] = useState(false);
+ const voiceOptions = [
+  { id: 'professional_female', name: 'Professional Female (Luxury)', icon: '👩‍💼' },
+  { id: 'professional_male', name: 'Professional Male (Commercial)', icon: '👨‍💼' },
+  { id: 'friendly_female', name: 'Friendly Female (Family)', icon: '👩' },
+  { id: 'luxury_male', name: 'Luxury Male (High-End)', icon: '🎩' }
+];
 
   // Define generateContent FIRST (before loadContent that depends on it)
   const generateContent = useCallback(async () => {
@@ -76,6 +82,7 @@ const ViralContentGenerator = () => {
       <div className="text-white text-center">
         <div className="w-12 h-12 border-4 border-white border-t-transparent rounded-full animate-spin mx-auto mb-4" />
         <p>Loading content...</p>
+  
       </div>
     </div>
     );

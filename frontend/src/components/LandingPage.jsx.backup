@@ -23,8 +23,8 @@ const LandingPage = () => {
       const response = await axios.post(`${API_URL}/api/users`, {
         name: formData.name,
         email: formData.email,
-        password: formData.password,
       });
+
       const userData = response.data;
       login(userData);
       toast.success('Account created! Please select a plan to continue.');

@@ -436,16 +436,14 @@ app = FastAPI(
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "https://wonderful-narwhal-f556de.netlify.app",
-        "https://listingspark-ai-2.onrender.com",
-        "http://localhost:3000",
-        "http://localhost:8000"
+        "https://wonderful-narwhal-f556de.netlify.app",  # your Netlify frontend
+        "http://localhost:3000",  # for local frontend testing
+        "http://localhost:8000"   # optional, if testing backend directly
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 app.mount("/uploads", StaticFiles(directory=str(UPLOADS_DIR)), name="uploads")
 app.mount("/tours", StaticFiles(directory=str(TOURS_DIR)), name="tours")
 # Health check routes

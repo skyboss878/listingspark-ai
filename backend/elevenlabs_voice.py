@@ -23,13 +23,19 @@ class ElevenLabsVoice:
     
     def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("ELEVENLABS_API_KEY")
-        if self.api_key:
-            set_api_key(self.api_key)
-            self.enabled = True
-            logger.info("✅ ElevenLabs voice initialized")
+        self.client = None
+        
+        if self.api_key and ELEVENLABS_AVAILABLE:
+            try:
+                self.client = ElevenLabs(api_key=self.api_key)
+                self.enabled = True
+                logger.info("✅ ElevenLabs voice initialized")
+            except Exception as e:
+                self.enabled = False
+                logger.warning(f"⚠️ ElevenLabs initialization failed: {e}")
         else:
             self.enabled = False
-            logger.warning("⚠️ ElevenLabs API key not found - voice narration disabled")
+            logger.warning("⚠️ ElevenLabs not available - voice narration disabled")
     
     async def generate_narration(
         self,
@@ -40,8 +46,8 @@ class ElevenLabsVoice:
     ) -> Optional[str]:
         """Generate voice narration from text"""
         
-        if not self.enabled:
-            logger.warning("Voice narration is disabled (no API key)")
+        if not self.enabled or not self.client:
+            logger.warning("Voice narration is disabled")
             return None
         
         try:
@@ -49,16 +55,14 @@ class ElevenLabsVoice:
             voice_id = voice_id or os.getenv("ELEVENLABS_VOICE_ID", "EXAVITQu4vr4xnSDxMaL")
             
             # Generate audio
-            audio = generate(
+            audio = self.client.generate(
                 text=text,
-                voice=Voice(
-                    voice_id=voice_id,
-                    settings=VoiceSettings(
-                        stability=0.5,
-                        similarity_boost=0.75,
-                        style=0.5,
-                        use_speaker_boost=True
-                    )
+                voice=voice_id,
+                voice_settings=VoiceSettings(
+                    stability=0.5,
+                    similarity_boost=0.75,
+                    style=0.5,
+                    use_speaker_boost=True
                 ),
                 model=model
             )
@@ -67,7 +71,12 @@ class ElevenLabsVoice:
             if output_path:
                 output_file = Path(output_path)
                 output_file.parent.mkdir(parents=True, exist_ok=True)
-                save(audio, str(output_file))
+                
+                # Write audio bytes to file
+                with open(output_file, 'wb') as f:
+                    for chunk in audio:
+                        f.write(chunk)
+                
                 logger.info(f"✅ Voice narration saved to: {output_path}")
                 return str(output_file)
             
@@ -79,12 +88,11 @@ class ElevenLabsVoice:
     
     def get_available_voices(self):
         """Get list of available voices"""
-        if not self.enabled:
+        if not self.enabled or not self.client:
             return []
         
         try:
-            from elevenlabs import voices
-            return voices()
+            return self.client.voices.get_all()
         except Exception as e:
             logger.error(f"Failed to get voices: {e}")
             return []

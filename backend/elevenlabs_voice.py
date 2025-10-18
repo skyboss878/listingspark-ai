@@ -7,7 +7,13 @@ import os
 import logging
 from pathlib import Path
 from typing import Optional
-from elevenlabs import generate, save, set_api_key, Voice, VoiceSettings
+
+try:
+    from elevenlabs.client import ElevenLabs
+    from elevenlabs import VoiceSettings
+    ELEVENLABS_AVAILABLE = True
+except ImportError:
+    ELEVENLABS_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 

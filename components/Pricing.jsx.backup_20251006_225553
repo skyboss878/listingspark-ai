@@ -1,0 +1,257 @@
+import { useEffect, useCallback, useState, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import axios from '../api';
+import './Pricing.css';
+
+const pricingTiers = {
+  starter: {
+    name: "Starter",
+    price: 29,
+    planId: 'P-9AG34383398031233NDRJZ5I',
+    features: [
+      "5 Property Listings",
+      "Basic Viral Content Generation",
+      "Instagram & Facebook Content",
+      "Email Support",
+      "Basic Analytics"
+    ]
+  },
+  professional: {
+    name: "Professional",
+    price: 79,
+    planId: 'P-3WT18648FL0332636NDRJX2I',
+    features: [
+      "Unlimited Property Listings",
+      "Advanced AI Content Generation",
+      "All Social Media Platforms",
+      "Virtual Tour Creation",
+      "Advanced Analytics",
+      "Priority Support",
+      "Custom Branding"
+    ]
+  },
+  enterprise: {
+    name: "Enterprise",
+    price: 149,
+    planId: 'P-8N048818NT6287545NDRJVQA',
+    features: [
+      "Everything in Professional",
+      "Multi-Agent Team Access",
+      "White-label Solution",
+      "API Access",
+      "Custom Integrations",
+      "Dedicated Account Manager",
+      "24/7 Phone Support"
+    ]
+  }
+};
+
+export default function Pricing() {
+  const navigate = useNavigate();
+  const [loading, setLoading] = useState({});
+  const [error, setError] = useState(null);
+  const buttonsInitialized = useRef(false);
+  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  const PAYPAL_CLIENT_ID = process.env.REACT_APP_PAYPAL_CLIENT_ID;
+
+  const saveSubscription = useCallback(async (subscriptionId, planType) => {
+    const token = localStorage.getItem('token');
+    
+    if (!token) {
+      throw new Error('Authentication required. Please login first.');
+    }
+
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/subscription/save`,
+        {
+          subscription_id: subscriptionId,
+          plan_type: planType,
+          status: 'active'
+        },
+        {
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`
+          },
+          timeout: 10000
+        }
+      );
+
+      console.log('Subscription saved:', response.data);
+      return response.data;
+    } catch (error) {
+      console.error('Failed to save subscription:', error);
+      
+      if (error.response?.status === 401) {
+        localStorage.removeItem('token');
+        throw new Error('Session expired. Please log in again.');
+      } else if (error.response?.status >= 500) {
+        throw new Error('Server error. Please contact support.');
+      } else if (error.code === 'ECONNABORTED') {
+        throw new Error('Request timeout. Please try again.');
+      }
+      
+      throw new Error('Failed to save subscription. Please contact support.');
+    }
+  }, [API_URL]);
+
+  const initializePayPalButtons = useCallback(() => {
+    if (buttonsInitialized.current || !window.paypal) {
+      return;
+    }
+
+    buttonsInitialized.current = true;
+
+    Object.entries(pricingTiers).forEach(([key, tier]) => {
+      const container = document.getElementById(`paypal-button-${key}`);
+
+      if (container) {
+        container.innerHTML = '';
+
+        window.paypal.Buttons({
+          style: {
+            shape: 'rect',
+            color: 'blue',
+            layout: 'vertical',
+            label: 'subscribe'
+          },
+          createSubscription: (data, actions) => {
+            setLoading(prev => ({ ...prev, [key]: true }));
+            return actions.subscription.create({ plan_id: tier.planId });
+          },
+          onApprove: async (data) => {
+            try {
+              console.log('PayPal subscription approved:', data);
+              await saveSubscription(data.subscriptionID, key);
+
+              navigate('/dashboard', {
+                state: {
+                  message: 'Subscription activated successfully!',
+                  subscriptionId: data.subscriptionID,
+                  plan: key
+                }
+              });
+            } catch (err) {
+              console.error('Error saving subscription:', err);
+              setError(err.message || `Failed to activate subscription. Subscription ID: ${data.subscriptionID}`);
+              setLoading(prev => ({ ...prev, [key]: false }));
+            }
+          },
+          onError: (err) => {
+            console.error('PayPal error:', err);
+            setError('Payment processing failed. Please try again or contact support.');
+            setLoading(prev => ({ ...prev, [key]: false }));
+          },
+          onCancel: () => {
+            console.log('Payment cancelled by user');
+            setLoading(prev => ({ ...prev, [key]: false }));
+          }
+        }).render(`#paypal-button-${key}`).catch(err => {
+          console.error('Failed to render PayPal button:', err);
+          setError('Failed to load payment buttons. Please refresh the page.');
+        });
+      }
+    });
+  }, [navigate, saveSubscription]);
+
+  useEffect(() => {
+    if (!PAYPAL_CLIENT_ID) {
+      setError('PayPal is not configured. Please contact support.');
+      return;
+    }
+
+    const existingScript = document.querySelector('script[src*="paypal.com/sdk"]');
+    
+    if (existingScript) {
+      if (window.paypal && !buttonsInitialized.current) {
+        initializePayPalButtons();
+      }
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&vault=true&intent=subscription`;
+    script.async = true;
+    script.onload = () => {
+      initializePayPalButtons();
+    };
+    script.onerror = () => {
+      setError('Failed to load PayPal SDK. Please check your internet connection and refresh.');
+    };
+    
+    document.body.appendChild(script);
+
+    return () => {
+      const scripts = document.querySelectorAll('script[src*="paypal.com/sdk"]');
+      scripts.forEach(s => s.remove());
+      buttonsInitialized.current = false;
+    };
+  }, [PAYPAL_CLIENT_ID, initializePayPalButtons]);
+
+  return (
+    <div className="pricing-container">
+      <h1>Choose Your Plan</h1>
+      <p className="pricing-subtitle">Start your free trial today - cancel anytime</p>
+
+      {error && (
+        <div className="error-banner" style={{
+          backgroundColor: '#fee',
+          border: '1px solid #fcc',
+          borderRadius: '8px',
+          padding: '16px 20px',
+          marginBottom: '30px',
+          color: '#c00',
+          maxWidth: '800px',
+          margin: '0 auto 30px'
+        }}>
+          <strong>⚠ Error:</strong> {error}
+        </div>
+      )}
+
+      <div className="pricing-grid">
+        {Object.entries(pricingTiers).map(([key, tier]) => (
+          <div key={key} className={`pricing-card ${key === 'professional' ? 'popular' : ''}`}>
+            {key === 'professional' && <div className="popular-badge">Most Popular</div>}
+
+            <h2>{tier.name}</h2>
+            <div className="price">
+              <span className="currency">$</span>
+              <span className="amount">{tier.price}</span>
+              <span className="period">/month</span>
+            </div>
+
+            <ul className="features">
+              {tier.features.map((feature, idx) => (
+                <li key={idx}>
+                  <span className="checkmark">✓</span> {feature}
+                </li>
+              ))}
+            </ul>
+
+            <div 
+              id={`paypal-button-${key}`} 
+              className="paypal-button-wrapper"
+              style={{ 
+                opacity: loading[key] ? 0.6 : 1,
+                minHeight: '50px',
+                transition: 'opacity 0.3s'
+              }}
+            />
+            
+            {loading[key] && (
+              <div style={{ 
+                textAlign: 'center', 
+                marginTop: '10px', 
+                color: '#666',
+                fontStyle: 'italic'
+              }}>
+                Processing payment...
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}

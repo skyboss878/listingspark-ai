@@ -1,0 +1,186 @@
+.pricing-container {
+  min-height: 100vh;
+  padding: 4rem 2rem;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+}
+
+.pricing-container h1 {
+  text-align: center;
+  color: white;
+  font-size: 2.5rem;
+  margin-bottom: 1rem;
+  font-weight: 700;
+}
+
+.pricing-subtitle {
+  text-align: center;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 1.2rem;
+  margin-bottom: 3rem;
+  font-weight: 500;
+}
+
+.pricing-single {
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.pricing-card {
+  background: white;
+  border-radius: 16px;
+  padding: 3rem;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+}
+
+.pricing-card:hover {
+  transform: translateY(-8px);
+  box-shadow: 0 30px 80px rgba(0, 0, 0, 0.25);
+}
+
+.pricing-card.professional {
+  border: 3px solid #667eea;
+}
+
+.popular-badge {
+  position: absolute;
+  top: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  color: white;
+  padding: 0.5rem 1.5rem;
+  border-radius: 20px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+}
+
+.pricing-card h2 {
+  font-size: 1.75rem;
+  color: #333;
+  margin-bottom: 1.5rem;
+  font-weight: 600;
+  margin-top: 0.5rem;
+  text-align: center;
+}
+
+.price {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  margin-bottom: 1rem;
+  color: #667eea;
+}
+
+.currency {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.amount {
+  font-size: 3.5rem;
+  font-weight: 700;
+  margin: 0 0.25rem;
+}
+
+.period {
+  font-size: 1.1rem;
+  color: #666;
+  font-weight: 500;
+}
+
+.trial-notice {
+  background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+  color: white;
+  padding: 1rem;
+  border-radius: 8px;
+  text-align: center;
+  margin-bottom: 2rem;
+  font-size: 1rem;
+}
+
+.features {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 2rem 0;
+  flex-grow: 1;
+}
+
+.features li {
+  padding: 0.85rem 0;
+  color: #555;
+  font-size: 1.05rem;
+  border-bottom: 1px solid #f0f0f0;
+  line-height: 1.6;
+  display: flex;
+  align-items: center;
+}
+
+.features li:last-child {
+  border-bottom: none;
+}
+
+.checkmark {
+  color: #667eea;
+  font-weight: bold;
+  margin-right: 0.75rem;
+  font-size: 1.3rem;
+}
+
+.paypal-button-wrapper {
+  margin-top: auto;
+  min-height: 50px;
+}
+
+.paypal-button-wrapper > div {
+  width: 100% !important;
+}
+
+.terms-notice {
+  text-align: center;
+  margin-top: 1.5rem;
+  font-size: 0.9rem;
+  color: #666;
+}
+
+.terms-notice a {
+  color: #667eea;
+  text-decoration: none;
+}
+
+.terms-notice a:hover {
+  text-decoration: underline;
+}
+
+@media (max-width: 768px) {
+  .pricing-container {
+    padding: 2rem 1rem;
+  }
+
+  .pricing-container h1 {
+    font-size: 2rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .pricing-subtitle {
+    font-size: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .pricing-card {
+    padding: 2rem;
+  }
+
+  .amount {
+    font-size: 2.5rem;
+  }
+
+  .features li {
+    font-size: 1rem;
+    padding: 0.75rem 0;
+  }
+}

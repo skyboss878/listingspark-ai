@@ -1715,6 +1715,151 @@ def _get_next_workflow_step(listing: Dict[str, Any]) -> str:
     else:
         return "Publish to MLS"
 
+# ==================== REAL360 AI DIRECTOR & VIRAL ENGINE ROUTES ====================
+
+@app.post("/api/director/shot-guidance")
+async def get_shot_guidance(
+    room_type: str,
+    listing_id: str,
+    current_position: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Get real-time AI director guidance for current shot"""
+    from ai_director import get_ai_director, RoomType
+    
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    director = get_ai_director()
+    guidance = await director.generate_shot_guidance(
+        RoomType(room_type),
+        listing,
+        current_position or "entrance"
+    )
+    
+    return guidance
+
+@app.post("/api/director/tour-script")
+async def generate_tour_script(
+    listing_id: str,
+    rooms: List[str],
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate complete AI-guided tour script"""
+    from ai_director import get_ai_director
+    
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    director = get_ai_director()
+    script = await director.generate_tour_script(listing, rooms)
+    
+    # Save script to listing
+    await (await get_database()).get_collection("listings").update_one(
+        {"id": listing_id},
+        {"$set": {"tour_script": script, "updated_at": datetime.utcnow()}}
+    )
+    
+    return script
+
+@app.post("/api/viral/generate-caption")
+async def generate_viral_caption(
+    listing_id: str,
+    platform: str = "instagram_reels",
+    tone: str = "excited",
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate viral social media caption"""
+    from viral_content_engine import get_viral_engine
+    
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    engine = get_viral_engine()
+    caption = await engine.generate_viral_caption(listing, tone, platform)
+    
+    return caption
+
+@app.post("/api/viral/platform-strategy")
+async def generate_platform_strategy(
+    listing_id: str,
+    tour_duration: int = 60,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate multi-platform viral content strategy"""
+    from viral_content_engine import get_viral_engine
+    
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    engine = get_viral_engine()
+    strategy = await engine.generate_platform_strategy(listing, tour_duration)
+    
+    # Save strategy to listing
+    await (await get_database()).get_collection("listings").update_one(
+        {"id": listing_id},
+        {"$set": {"viral_strategy": strategy, "updated_at": datetime.utcnow()}}
+    )
+    
+    return strategy
+
+@app.post("/api/viral/generate-clips")
+async def generate_viral_clips(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate viral clip moments from full tour"""
+    from viral_content_engine import get_viral_engine
+    from ai_director import get_ai_director
+    
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    tour = listing.get("virtual_tour")
+    if not tour:
+        raise HTTPException(status_code=400, detail="Virtual tour not generated yet")
+    
+    # Get viral moments from tour script
+    director = get_ai_director()
+    viral_moments = []
+    
+    if listing.get("tour_script"):
+        shots = listing["tour_script"].get("shots", [])
+        viral_moments = await director.generate_viral_moments(listing, shots)
+    
+    # Generate clips
+    engine = get_viral_engine()
+    tour_path = tour.get("video_url", "")
+    clips = await engine.generate_viral_clips(tour_path, viral_moments, listing)
+    
+    # Save clips to listing
+    await (await get_database()).get_collection("listings").update_one(
+        {"id": listing_id},
+        {"$set": {"viral_clips": clips, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"clips": clips, "total_clips": len(clips)}
+
+@app.get("/api/viral/trending-hashtags")
+async def get_trending_hashtags(category: str = "real_estate"):
+    """Get trending hashtags for category"""
+    from viral_content_engine import get_viral_engine
+    
+    engine = get_viral_engine()
+    hashtags = engine.get_trending_hashtags(category)
+    
+    return {"category": category, "hashtags": hashtags}
+
 @app.get("/api/voices")
 async def get_voices():
     """Get available ElevenLabs voices"""

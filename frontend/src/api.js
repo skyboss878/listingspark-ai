@@ -1,11 +1,7 @@
 import axios from 'axios';
 
-// Detect backend URL (Vite or React)
-const BACKEND_URL =
-  import.meta?.env?.VITE_API_URL ||
-  process.env.REACT_APP_API_URL ||
-  'http://localhost:8000';
-
+// Detect backend URL (React)
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 const API_BASE = `${BACKEND_URL}/api`;
 
 // Global defaults

@@ -1423,6 +1423,118 @@ async def get_syndication_status(
         "published_at": listing.get('published_at')
     }
 
+# ==================== PLATFORM SYNDICATION ROUTES ====================
+
+@app.post("/api/platforms/publish/{listing_id}")
+async def publish_to_platforms(
+    listing_id: str,
+    platforms: Optional[List[str]] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    background_tasks: BackgroundTasks = None
+):
+    """Publish listing to multiple platforms (Zillow, Realtor.com, Facebook, Trulia)"""
+    from platform_integrations_v2 import get_platform_manager, ListingData, PlatformType
+    
+    listing = await (await get_database()).get_collection("listings").find_one({
+        "id": listing_id,
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
+    })
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Convert to ListingData format
+    listing_data = ListingData(
+        id=listing["id"],
+        address=listing["address"],
+        city=listing["city"],
+        state=listing["state"],
+        zip_code=listing["zip_code"],
+        price=listing["price"],
+        bedrooms=listing["bedrooms"],
+        bathrooms=listing["bathrooms"],
+        square_feet=listing.get("square_feet", 0),
+        property_type=listing.get("property_type", "single_family"),
+        description=listing.get("description", ""),
+        features=listing.get("features", []),
+        photos=listing.get("images", []),
+        tour_360_url=listing.get("virtual_tour", {}).get("video_url"),
+        video_url=listing.get("video_url"),
+        contact_name=listing.get("agent_name", current_user.get("full_name", "")),
+        contact_email=listing.get("agent_email", current_user.get("email", "")),
+        contact_phone=listing.get("agent_phone", ""),
+        year_built=listing.get("year_built"),
+        lot_size=listing.get("lot_size")
+    )
+    
+    # Get platform manager
+    manager = await get_platform_manager()
+    
+    # Convert platform names to enum
+    platform_types = None
+    if platforms:
+        platform_types = [PlatformType(p) for p in platforms]
+    
+    # Publish to platforms
+    results = await manager.publish_to_platforms(listing_data, platform_types)
+    
+    # Update listing with platform IDs
+    platform_data = {}
+    for result in results:
+        platform_data[result.platform.value] = {
+            "status": result.status.value,
+            "platform_id": result.platform_listing_id,
+            "platform_url": result.platform_url,
+            "synced_at": result.synced_at.isoformat(),
+            "error": result.error_message
+        }
+    
+    await (await get_database()).get_collection("listings").update_one(
+        {"id": listing_id},
+        {"$set": {
+            "platform_syndication": platform_data,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return {
+        "listing_id": listing_id,
+        "results": [r.dict() for r in results]
+    }
+
+@app.get("/api/platforms/status/{listing_id}")
+async def get_platform_status(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Get platform syndication status"""
+    listing = await (await get_database()).get_collection("listings").find_one({
+        "id": listing_id,
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
+    })
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    return {
+        "listing_id": listing_id,
+        "platforms": listing.get("platform_syndication", {}),
+        "mls_syndication": listing.get("syndication", {})
+    }
+
+@app.get("/api/platforms/available")
+async def get_available_platforms():
+    """Get list of available platforms"""
+    from platform_integrations_v2 import get_platform_manager
+    
+    manager = await get_platform_manager()
+    platforms = list(manager.integrations.keys())
+    
+    return {
+        "available_platforms": [p.value for p in platforms],
+        "count": len(platforms)
+    }
+
 # ==================== DASHBOARD & ANALYTICS ROUTES ====================
 
 @app.get("/api/dashboard/stats")

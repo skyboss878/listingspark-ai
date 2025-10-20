@@ -1,1 +1,352 @@
-"""\nReal360 AI Director Mode - Enterprise Edition\nAI-powered cinematography director for real estate tours\nGuides realtors through optimal camera movements and selling moments\n"""\nimport os\nimport logging\nimport json\nimport random\nimport asyncio\nfrom typing import Dict, List, Optional, Any\nfrom enum import Enum\nfrom datetime import datetime\nfrom dataclasses import dataclass, asdict\nfrom abc import ABC, abstractmethod\nimport hashlib\n\nfrom pydantic import BaseModel, Field, validator\nfrom pydantic_settings import BaseSettings\nfrom functools import wraps\nimport time\n\ntry:\n    from openai import AsyncOpenAI\n    OPENAI_AVAILABLE = True\nexcept ImportError:\n    OPENAI_AVAILABLE = False\n\nlogger = logging.getLogger(__name__)\n\n# ============================================================================\n# CONFIGURATION & SETTINGS\n# ============================================================================\n\nclass Settings(BaseSettings):\n    """Centralized settings with validation"""\n    OPENAI_API_KEY: Optional[str] = None\n    OPENAI_MODEL: str = "gpt-4"\n    DEFAULT_TEMPERATURE: float = 0.7\n    MAX_RETRIES: int = 3\n    RETRY_DELAY: float = 1.0\n    CACHE_ENABLED: bool = True\n    CACHE_TTL_SECONDS: int = 3600\n    LOG_LEVEL: str = "INFO"\n\n    class Config:\n        env_file = ".env"\n        case_sensitive = True\n\nsettings = Settings()\nlogging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))\n\n# ============================================================================\n# DECORATORS & UTILITIES\n# ============================================================================\n\ndef retry_with_backoff(max_retries: int = 3, delay: float = 1.0):\n    """Retry decorator with exponential backoff"""\n    def decorator(func):\n        @wraps(func)\n        async def wrapper(*args, **kwargs):\n            for attempt in range(max_retries):\n                try:\n                    return await func(*args, **kwargs)\n                except Exception as e:\n                    if attempt == max_retries - 1:\n                        logger.error(f"Failed after {max_retries} attempts: {e}")\n                        raise\n                    wait_time = delay * (2 ** attempt)\n                    logger.warning(f"Attempt {attempt + 1} failed, retrying in {wait_time}s: {e}")\n                    await asyncio.sleep(wait_time)\n        return wrapper\n    return decorator\n\nclass SimpleCache:\n    """Simple in-memory cache with TTL"""\n    def __init__(self, ttl_seconds: int = 3600):\n        self.cache = {}\n        self.ttl = ttl_seconds\n\n    def _make_key(self, *args, **kwargs) -> str:\n        """Generate cache key from arguments"""\n        key_str = str(args) + str(sorted(kwargs.items()))\n        return hashlib.md5(key_str.encode()).hexdigest()\n\n    def get(self, key: str) -> Optional[Any]:\n        if key in self.cache:\n            value, timestamp = self.cache[key]\n            if time.time() - timestamp < self.ttl:\n                return value\n            del self.cache[key]\n        return None\n\n    def set(self, key: str, value: Any):\n        self.cache[key] = (value, time.time())\n\n    def clear(self):\n        self.cache.clear()\n\ncache = SimpleCache(settings.CACHE_TTL_SECONDS)\n\n# ============================================================================\n# DATA MODELS\n# ============================================================================\n\nclass RoomType(str, Enum):\n    ENTRANCE = "entrance"\n    LIVING_ROOM = "living_room"\n    KITCHEN = "kitchen"\n    DINING_ROOM = "dining_room"\n    BEDROOM = "bedroom"\n    BATHROOM = "bathroom"\n    OUTDOOR = "outdoor"\n    GARAGE = "garage"\n    OFFICE = "office"\n    BASEMENT = "basement"\n\nclass CameraAngle(str, Enum):\n    WIDE_SHOT = "wide_shot"\n    MEDIUM_SHOT = "medium_shot"\n    DETAIL_SHOT = "detail_shot"\n    PAN_LEFT = "pan_left"\n    PAN_RIGHT = "pan_right"\n    TILT_UP = "tilt_up"\n    TILT_DOWN = "tilt_down"\n    DOLLY_IN = "dolly_in"\n    DOLLY_OUT = "dolly_out"\n\nclass PropertyDetails(BaseModel):\n    """Property information with validation"""\n    id: Optional[str] = None\n    property_type: str = Field(default='single_family', description="Type of property")\n    price: int = Field(ge=0, description="Property price in USD")\n    bedrooms: int = Field(ge=0, le=20, description="Number of bedrooms")\n    bathrooms: float = Field(default=0, ge=0, le=20, description="Number of bathrooms")\n    sqft: Optional[int] = Field(default=None, ge=0, description="Square footage")\n    features: List[str] = Field(default_factory=list, description="Key features")\n    city: str = Field(default="", description="City location")\n    state: str = Field(default="", description="State location")\n    year_built: Optional[int] = Field(default=None, description="Year property was built")\n    hoa_fee: Optional[int] = Field(default=None, ge=0, description="HOA fees")\n    \n    @validator('features')\n    def validate_features(cls, v):\n        return [f.strip() for f in v if f.strip()]\n\nclass ShotGuidance(BaseModel):\n    """Single shot guidance"""\n    camera_angle: CameraAngle\n    verbal_direction: str = Field(..., max_length=500)\n    key_features: List[str] = Field(..., max_items=5)\n    movement_speed: str = Field(..., pattern="^(slow|medium|fast)$")\n    duration_seconds: int = Field(ge=3, le=60)\n    next_move: str\n    is_viral_moment: bool = False\n    viral_caption: Optional[str] = Field(default="", max_length=300)\n    room_type: Optional[str] = None\n    timestamp_start: Optional[int] = None\n    timestamp_end: Optional[int] = None\n    confidence_score: float = Field(default=0.8, ge=0.0, le=1.0)\n\nclass PlatformSuggestion(BaseModel):\n    platform: str\n    format: str\n    max_duration: str\n    priority: str = Field(pattern="^(high|medium|low)$")\n    estimated_reach: Optional[int] = None\n\nclass ViralMoment(BaseModel):\n    """Extracted viral moment"""\n    clip_id: str\n    timestamp_start: int\n    timestamp_end: int\n    duration: int\n    room: Optional[str]\n    caption: Optional[str]\n    suggested_hashtags: List[str]\n    best_platforms: List[PlatformSuggestion]\n    cta: str\n    viral_score: float = Field(ge=0.0, le=1.0)\n    created_at: datetime = Field(default_factory=datetime.now)\n\nclass TourScript(BaseModel):\n    """Complete tour script"""\n    property_id: Optional[str]\n    created_at: datetime = Field(default_factory=datetime.now)\n    total_duration: int\n    shots: List[ShotGuidance]\n    viral_moments: List[ViralMoment] = Field(default_factory=list)\n    music_suggestions: List[Dict[str, str]]\n    opening_hook: str\n    closing_cta: str\n    estimated_completion_time_minutes: int = 0\n    \n    @validator('estimated_completion_time_minutes', always=True)\n    def calculate_completion_time(cls, v, values):\n        if 'total_duration' in values:\n            return values['total_duration'] // 60\n        return v\n\nclass TourAnalytics(BaseModel):\n    """Analytics for tour performance"""\n    tour_id: str\n    total_shots: int\n    viral_moments_count: int\n    avg_shot_duration: float\n    trending_features: List[str]\n    recommended_platforms: List[str]\n    estimated_engagement_score: float = Field(ge=0.0, le=100.0)\n\n# ============================================================================\n# ABSTRACT BASE CLASSES FOR EXTENSIBILITY\n# ============================================================================\n\nclass GuidanceStrategy(ABC):\n    """Strategy pattern for different guidance approaches"""\n    @abstractmethod\n    async def generate(self, room_type: RoomType, property_details: PropertyDetails) -> ShotGuidance:\n        pass\n\nclass AIGuidanceStrategy(GuidanceStrategy):\n    """AI-powered guidance"""\n    def __init__(self, client: AsyncOpenAI):\n        self.client = client\n\n    @retry_with_backoff(max_retries=settings.MAX_RETRIES, delay=settings.RETRY_DELAY)\n    async def generate(self, room_type: RoomType, property_details: PropertyDetails) -> ShotGuidance:\n        cache_key = cache._make_key("ai_guidance", room_type, property_details.id)\n        cached = cache.get(cache_key)\n        if cached and settings.CACHE_ENABLED:\n            return cached\n\n        prompt = f"""You are a professional real estate cinematographer guiding a realtor through filming a property tour.\n\nProperty Details:\n- Type: {property_details.property_type}\n- Price: ${property_details.price:,}\n- Bedrooms: {property_details.bedrooms} | Bathrooms: {property_details.bathrooms}\n- Square Feet: {property_details.sqft or 'N/A'}\n- Features: {', '.join(property_details.features)}\n- Location: {property_details.city}, {property_details.state}\n\nCurrent Room: {room_type.value}\n\nProvide guidance in JSON format with these exact fields:\n1. camera_angle: one of (wide_shot, medium_shot, detail_shot, pan_left, pan_right, tilt_up, tilt_down, dolly_in, dolly_out)\n2. verbal_direction: Concise, friendly instruction (max 2 sentences)\n3. key_features: List of up to 3 features to highlight\n4. movement_speed: slow/medium/fast\n5. duration_seconds: 3-60 seconds\n6. next_move: Next room or area\n7. is_viral_moment: true/false\n8. viral_caption: Catchy caption if viral moment\n9. confidence_score: 0.0-1.0 rating your confidence in this shot\n\nBe natural, encouraging, and cinematic."""\n\n        response = await self.client.chat.completions.create(\n            model=settings.OPENAI_MODEL,\n            messages=[\n                {"role": "system", "content": "You are an expert real estate cinematographer."},\n                {"role": "user", "content": prompt}\n            ],\n            temperature=settings.DEFAULT_TEMPERATURE,\n            response_format={"type": "json_object"}\n        )\n\n        data = json.loads(response.choices[0].message.content or "{}")\n        guidance = ShotGuidance(**data)\n        \n        if settings.CACHE_ENABLED:\n            cache.set(cache_key, guidance)\n        \n        return guidance\n\nclass FallbackGuidanceStrategy(GuidanceStrategy):\n    """Fallback guidance when AI unavailable"""\n    GUIDANCE_MAP = {\n        RoomType.ENTRANCE: {\n            "camera_angle": "wide_shot",\n            "verbal_direction": "Start with a wide shot from the entrance. Pan slowly left to right.",\n            "key_features": ["Front door", "Entry lighting", "Flooring"],\n            "movement_speed": "slow",\n            "duration_seconds": 8,\n            "next_move": "living_room",\n            "is_viral_moment": True,\n            "viral_caption": "First impressions! 🏡✨",\n            "confidence_score": 0.85\n        },\n        RoomType.KITCHEN: {\n            "camera_angle": "detail_shot",\n            "verbal_direction": "Showcase the island, appliances, and countertops.",\n            "key_features": ["Kitchen island", "Appliances", "Countertops"],\n            "movement_speed": "medium",\n            "duration_seconds": 12,\n            "next_move": "dining_room",\n            "is_viral_moment": True,\n            "viral_caption": "Chef's dream! 👩‍🍳",\n            "confidence_score": 0.8\n        },\n        RoomType.LIVING_ROOM: {\n            "camera_angle": "wide_shot",\n            "verbal_direction": "Capture the entire space. Highlight windows and ceiling height.",\n            "key_features": ["Open floor plan", "Natural light", "Ceiling height"],\n            "movement_speed": "slow",\n            "duration_seconds": 10,\n            "next_move": "kitchen",\n            "is_viral_moment": True,\n            "viral_caption": "Living room goals! ❤️",\n            "confidence_score": 0.82\n        },\n    }\n\n    async def generate(self, room_type: RoomType, property_details: PropertyDetails) -> ShotGuidance:\n        data = self.GUIDANCE_MAP.get(room_type, self.GUIDANCE_MAP[RoomType.ENTRANCE])\n        return ShotGuidance(**data)\n\n# ============================================================================\n# MAIN AI DIRECTOR CLASS\n# ============================================================================\n\nclass AIDirector:\n    """Enterprise-grade AI Director for real estate cinematography"""\n    \n    def __init__(self, api_key: Optional[str] = None):\n        self.api_key = api_key or settings.OPENAI_API_KEY\n        self.client = None\n        self.enabled = False\n        self.strategy: GuidanceStrategy = FallbackGuidanceStrategy()\n        \n        if self.api_key and OPENAI_AVAILABLE:\n            self.client = AsyncOpenAI(api_key=self.api_key)\n            self.enabled = True\n            self.strategy = AIGuidanceStrategy(self.client)\n            logger.info("✅ AI Director Mode initialized (AI Strategy)")\n        else:\n            logger.warning("⚠️ AI Director Mode using fallback strategy")\n\n    async def generate_shot_guidance(\n        self,\n        room_type: RoomType,\n        property_details: PropertyDetails,\n        current_position: str = "entrance"\n    ) -> ShotGuidance:\n        """Generate shot guidance using configured strategy"""\n        guidance = await self.strategy.generate(room_type, property_details)\n        guidance.room_type = room_type.value\n        return guidance\n\n    def generate_viral_moments(\n        self,\n        tour_data: PropertyDetails,\n        all_shots: List[ShotGuidance]\n    ) -> List[ViralMoment]:\n        """Extract and score viral moments"""\n        viral_moments = []\n        \n        for i, shot in enumerate(all_shots):\n            if shot.is_viral_moment:\n                viral_score = self._calculate_viral_score(shot, tour_data)\n                \n                viral_moments.append(ViralMoment(\n                    clip_id=f"viral_{tour_data.id}_{i}",\n                    timestamp_start=shot.timestamp_start or (i * 15),\n                    timestamp_end=shot.timestamp_end or ((i + 1) * 15),\n                    duration=shot.duration_seconds,\n                    room=shot.room_type,\n                    caption=shot.viral_caption,\n                    suggested_hashtags=self._generate_hashtags(shot, tour_data),\n                    best_platforms=self._suggest_platforms(shot),\n                    cta=self._generate_cta(tour_data),\n                    viral_score=viral_score\n                ))\n        \n        return sorted(viral_moments, key=lambda x: x.viral_score, reverse=True)\n\n    def _calculate_viral_score(self, shot: ShotGuidance, property_details: PropertyDetails) -> float:\n        """Calculate likelihood of viral success"""\n        score = shot.confidence_score * 100\n        \n        if property_details.price > 1_000_000:\n            score += 10\n        if property_details.sqft and property_details.sqft > 5000:\n            score += 5\n        if shot.room_type in ["kitchen", "outdoor"]:\n            score += 15\n        if len(shot.viral_caption or "") > 30:\n            score += 5\n        \n        return min(100.0, score) / 100.0\n\n    def _generate_hashtags(self, shot: ShotGuidance, tour_data: PropertyDetails) -> List[str]:\n        """Generate trending hashtags"""\n        tags = ['#RealEstate', '#DreamHome', '#HouseHunting', '#NewListing']\n        \n        room = shot.room_type or ''\n        if 'kitchen' in room:\n            tags.extend(['#KitchenGoals', '#ModernKitchen', '#HomeDesign'])\n        elif 'living' in room:\n            tags.extend(['#LivingRoom', '#HomeInspiration', '#InteriorDesign'])\n        elif 'outdoor' in room:\n            tags.extend(['#BackyardGoals', '#OutdoorLiving', '#HomeExterior'])\n        elif 'bedroom' in room:\n            tags.extend(['#BedroomGoals', '#CozyHome', '#MasterSuite'])\n        \n        if tour_data.price > 1_000_000:\n            tags.extend(['#LuxuryRealEstate', '#LuxuryHomes'])\n        if tour_data.city:\n            tags.append(f'#{tour_data.city.replace(" ", "")}Homes')\n        if tour_data.year_built and tour_data.year_built >= 2020:\n            tags.append('#NewConstruction')\n        \n        return list(dict.fromkeys(tags))[:12]\n\n    def _suggest_platforms(self, shot: ShotGuidance) -> List[PlatformSuggestion]:\n        """Suggest platforms with reach estimates"""\n        platforms = []\n        duration = shot.duration_seconds\n        \n        if 15 <= duration <= 90:\n            platforms.append(PlatformSuggestion(\n                platform='Instagram Reels',\n                format='9:16 vertical',\n                max_duration='90s',\n                priority='high',\n                estimated_reach=50000\n            ))\n        \n        if 15 <= duration <= 60:\n            platforms.append(PlatformSuggestion(\n                platform='TikTok',\n                format='9:16 vertical',\n                max_duration='60s',\n                priority='high',\n                estimated_reach=75000\n            ))\n        \n        if duration <= 60:\n            platforms.append(PlatformSuggestion(\n                platform='YouTube Shorts',\n                format='9:16 vertical',\n                max_duration='60s',\n                priority='medium',\n                estimated_reach=30000\n            ))\n        \n        platforms.append(PlatformSuggestion(\n            platform='Facebook/Instagram Feed',\n            format='4:5 or 1:1',\n            max_duration='2min',\n            priority='medium',\n            estimated_reach=25000\n        ))\n        \n        return platforms\n\n    def _generate_cta(self, tour_data: PropertyDetails) -> str:\n        """Generate dynamic CTAs based on property"""\n        ctas = [\n            "DM me for a private showing! 📨",\n            f"Asking ${tour_data.price:,} - Don't miss out! 🏡",\n            "Schedule your tour now! 📞",\n            "Save this before it's gone! 💫",\n            f"This {tour_data.bedrooms}BR is a MUST-SEE! 👇",\n            "Your dream home is waiting! Contact me! 🔑"\n        ]\n        return random.choice(ctas)\n\n    async def generate_tour_script(\n        self,\n        property_details: PropertyDetails,\n        rooms: List[str]\n    ) -> TourScript:\n        """Generate complete tour script"""\n        shots = []\n        total_duration = 0\n        errors = []\n        \n        for room_name in rooms:\n            try:\n                room_type = RoomType(room_name)\n                guidance = await self.generate_shot_guidance(room_type, property_details)\n                shots.append(guidance)\n                total_duration += guidance.duration_seconds\n            except ValueError:\n                errors.append(f"Invalid room type: {room_name}")\n                logger.warning(f"Skipping invalid room: {room_name}")\n        \n        if errors:\n            logger.warning(f"Tour script generation had {len(errors)} errors: {errors}")\n        \n        script = TourScript(\n            property_id=property_details.id,\n            total_duration=total_duration,\n            shots=shots,\n            viral_moments=[],\n            music_suggestions=[\n                {'track': 'Upbeat Modern Pop', 'mood': 'energetic', 'platforms': 'Instagram, TikTok'},\n                {'track': 'Ambient Luxury', 'mood': 'elegant', 'platforms': 'YouTube, Facebook'},\n                {'track': 'Cinematic Orchestral', 'mood': 'dramatic', 'platforms': 'YouTube'}\n            ],\n            opening_hook=f"Welcome to this stunning {property_details.bedrooms}BR, {property_details.bathrooms}BA home in {property_details.city}! 🏡✨",\n            closing_cta="Ready to make this your home? Contact me today! Don't let this opportunity slip away! 🔑"\n        )\n        \n        return script\n\n    def generate_analytics(self, tour_script: TourScript) -> TourAnalytics:\n        """Generate tour analytics and insights"""\n        viral_moments = self.generate_viral_moments(\n            PropertyDetails(),\n            tour_script.shots\n        )\n        \n        trending_features = {}\n        for shot in tour_script.shots:\n            for feature in shot.key_features:\n                trending_features[feature] = trending_features.get(feature, 0) + 1\n        \n        top_features = sorted(trending_features.items(), key=lambda x: x[1], reverse=True)[:5]\n        \n        platforms = set()\n        for moment in viral_moments[:3]:\n            for p in moment.best_platforms:\n                platforms.add(p.platform)\n        \n        avg_duration = sum(s.duration_seconds for s in tour_script.shots) / len(tour_script.shots) if tour_script.shots else 0\n        engagement_score = min(100.0, (len(viral_moments) * 25) + (avg_duration / 60 * 10) + 20)\n        \n        return TourAnalytics(\n            tour_id=tour_script.property_id or "unknown",\n            total_shots=len(tour_script.shots),\n            viral_moments_count=len(viral_moments),\n            avg_shot_duration=avg_duration,\n            trending_features=[f[0] for f in top_features],\n            recommended_platforms=list(platforms),\n            estimated_engagement_score=engagement_score\n        )\n\n# ============================================================================\n# SINGLETON & FACTORY\n# ============================================================================\n\n_ai_director: Optional[AIDirector] = None\n\ndef get_ai_director() -> AIDirector:\n    """Get or create global AI Director instance"""\n    global _ai_director\n    if _ai_director is None:\n        _ai_director = AIDirector()\n    return _ai_director\n\ndef clear_cache():\n    """Clear the guidance cache"""\n    cache.clear()\n    logger.info("Cache cleared")\n
+"""
+Real360 AI Director Mode
+AI-powered cinematography director for real estate tours
+Guides realtors through optimal camera movements and selling moments
+"""
+
+import os
+import logging
+from typing import Dict, List, Optional, Any
+from enum import Enum
+import json
+
+try:
+    from openai import AsyncOpenAI
+    OPENAI_AVAILABLE = True
+except ImportError:
+    OPENAI_AVAILABLE = False
+
+logger = logging.getLogger(__name__)
+
+
+class RoomType(str, Enum):
+    ENTRANCE = "entrance"
+    LIVING_ROOM = "living_room"
+    KITCHEN = "kitchen"
+    DINING_ROOM = "dining_room"
+    BEDROOM = "bedroom"
+    BATHROOM = "bathroom"
+    OUTDOOR = "outdoor"
+    GARAGE = "garage"
+    OFFICE = "office"
+    BASEMENT = "basement"
+
+
+class CameraAngle(str, Enum):
+    WIDE_SHOT = "wide_shot"
+    MEDIUM_SHOT = "medium_shot"
+    DETAIL_SHOT = "detail_shot"
+    PAN_LEFT = "pan_left"
+    PAN_RIGHT = "pan_right"
+    TILT_UP = "tilt_up"
+    TILT_DOWN = "tilt_down"
+    DOLLY_IN = "dolly_in"
+    DOLLY_OUT = "dolly_out"
+
+
+class ViralMomentType(str, Enum):
+    REVEAL = "reveal"
+    TRANSITION = "transition"
+    FEATURE_HIGHLIGHT = "feature_highlight"
+    LIFESTYLE_MOMENT = "lifestyle_moment"
+    DRAMATIC_VIEW = "dramatic_view"
+
+
+class AIDirector:
+    """AI Director for guided real estate tour filming"""
+    
+    def __init__(self, api_key: Optional[str] = None):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.client = None
+        
+        if self.api_key and OPENAI_AVAILABLE:
+            self.client = AsyncOpenAI(api_key=self.api_key)
+            self.enabled = True
+            logger.info("✅ AI Director Mode initialized")
+        else:
+            self.enabled = False
+            logger.warning("⚠️ AI Director Mode disabled - OpenAI not available")
+    
+    async def generate_shot_guidance(
+        self,
+        room_type: RoomType,
+        property_details: Dict[str, Any],
+        current_position: str = "entrance"
+    ) -> Dict[str, Any]:
+        """Generate real-time shot guidance for the realtor"""
+        
+        if not self.enabled:
+            return self._fallback_guidance(room_type)
+        
+        try:
+            prompt = f"""You are a professional real estate cinematographer guiding a realtor through filming a property tour.
+
+Property Details:
+- Type: {property_details.get('property_type', 'single_family')}
+- Price: ${property_details.get('price', 0):,}
+- Bedrooms: {property_details.get('bedrooms', 0)}
+- Features: {', '.join(property_details.get('features', []))}
+
+Current Room: {room_type}
+Current Position: {current_position}
+
+Provide guidance in JSON format with:
+1. camera_angle: Best angle to use (wide_shot, medium_shot, detail_shot, pan, tilt, dolly)
+2. verbal_direction: Concise, friendly instruction (max 2 sentences)
+3. key_features: List of 3 features to highlight in this room
+4. movement_speed: slow/medium/fast
+5. duration_seconds: How long to film this shot (5-15 seconds)
+6. next_move: Where to move camera next
+7. is_viral_moment: true/false - is this a potential viral clip?
+8. viral_caption: If viral moment, suggest a caption
+
+Keep directions natural and encouraging like a helpful cinematographer on set."""
+
+            response = await self.client.chat.completions.create(
+                model="gpt-4",
+                messages=[
+                    {"role": "system", "content": "You are an expert real estate cinematographer providing shot-by-shot guidance."},
+                    {"role": "user", "content": prompt}
+                ],
+                temperature=0.7,
+                response_format={"type": "json_object"}
+            )
+            
+            guidance = json.loads(response.choices[0].message.content)
+            return guidance
+            
+        except Exception as e:
+            logger.error(f"AI Director error: {e}")
+            return self._fallback_guidance(room_type)
+    
+    def _fallback_guidance(self, room_type: RoomType) -> Dict[str, Any]:
+        """Fallback guidance when AI is not available"""
+        
+        guidance_map = {
+            RoomType.ENTRANCE: {
+                "camera_angle": "wide_shot",
+                "verbal_direction": "Start with a wide shot from the entrance. Pan slowly from left to right to capture the full space and natural light.",
+                "key_features": ["Front door design", "Entry flooring", "Natural lighting"],
+                "movement_speed": "slow",
+                "duration_seconds": 8,
+                "next_move": "living_room",
+                "is_viral_moment": True,
+                "viral_caption": "First impressions matter! 🏠✨ Watch this stunning entrance reveal."
+            },
+            RoomType.KITCHEN: {
+                "camera_angle": "detail_shot",
+                "verbal_direction": "Focus on the kitchen island first. Then pan to appliances and countertops. Make it feel inviting and functional.",
+                "key_features": ["Kitchen island", "Stainless appliances", "Granite countertops"],
+                "movement_speed": "medium",
+                "duration_seconds": 12,
+                "next_move": "dining_room",
+                "is_viral_moment": True,
+                "viral_caption": "Chef's dream kitchen! 👨‍🍳 Everything you need in one perfect space."
+            },
+            RoomType.LIVING_ROOM: {
+                "camera_angle": "wide_shot",
+                "verbal_direction": "Capture the entire living area. Highlight windows, ceiling height, and flow. Move slowly to show spaciousness.",
+                "key_features": ["Open floor plan", "Natural light", "Ceiling height"],
+                "movement_speed": "slow",
+                "duration_seconds": 10,
+                "next_move": "kitchen",
+                "is_viral_moment": True,
+                "viral_caption": "Space to live, laugh, and love! ❤️ Look at this living room!"
+            },
+            RoomType.BEDROOM: {
+                "camera_angle": "medium_shot",
+                "verbal_direction": "Start at the doorway showing the bed placement. Then highlight closet space and windows. Keep it peaceful and inviting.",
+                "key_features": ["Room size", "Closet space", "Window views"],
+                "movement_speed": "medium",
+                "duration_seconds": 8,
+                "next_move": "bathroom",
+                "is_viral_moment": False,
+                "viral_caption": ""
+            },
+            RoomType.BATHROOM: {
+                "camera_angle": "detail_shot",
+                "verbal_direction": "Showcase the vanity, then the shower/tub, and finally the fixtures. Keep movements smooth and highlight luxury features.",
+                "key_features": ["Vanity", "Shower/tub", "Tile work"],
+                "movement_speed": "slow",
+                "duration_seconds": 7,
+                "next_move": "next_bedroom",
+                "is_viral_moment": False,
+                "viral_caption": ""
+            },
+            RoomType.OUTDOOR: {
+                "camera_angle": "wide_shot",
+                "verbal_direction": "Start with the backyard view. Pan across the space showing the full outdoor area. Capture lifestyle potential!",
+                "key_features": ["Yard size", "Outdoor features", "Privacy"],
+                "movement_speed": "slow",
+                "duration_seconds": 10,
+                "next_move": "conclusion",
+                "is_viral_moment": True,
+                "viral_caption": "Your private outdoor paradise! 🌳☀️ Perfect for entertaining!"
+            }
+        }
+        
+        return guidance_map.get(room_type, guidance_map[RoomType.ENTRANCE])
+    
+    async def generate_viral_moments(
+        self,
+        tour_data: Dict[str, Any],
+        all_shots: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Identify and extract viral moment clips from the full tour"""
+        
+        viral_moments = []
+        
+        for i, shot in enumerate(all_shots):
+            if shot.get('is_viral_moment'):
+                viral_moments.append({
+                    'clip_id': f"viral_{i}",
+                    'timestamp_start': shot.get('timestamp_start', 0),
+                    'timestamp_end': shot.get('timestamp_end', 15),
+                    'duration': shot.get('duration_seconds', 15),
+                    'room': shot.get('room_type'),
+                    'caption': shot.get('viral_caption'),
+                    'suggested_hashtags': self._generate_hashtags(shot, tour_data),
+                    'best_platforms': self._suggest_platforms(shot),
+                    'cta': self._generate_cta(tour_data)
+                })
+        
+        return viral_moments
+    
+    def _generate_hashtags(self, shot: Dict[str, Any], tour_data: Dict[str, Any]) -> List[str]:
+        """Generate trending hashtags for the shot"""
+        
+        base_tags = ['#RealEstate', '#DreamHome', '#HouseHunting', '#NewListing']
+        
+        # Add room-specific tags
+        room = shot.get('room_type', '')
+        if 'kitchen' in room.lower():
+            base_tags.extend(['#KitchenGoals', '#ModernKitchen', '#HomeDesign'])
+        elif 'living' in room.lower():
+            base_tags.extend(['#LivingRoom', '#HomeInspiration', '#InteriorDesign'])
+        elif 'outdoor' in room.lower():
+            base_tags.extend(['#BackyardGoals', '#OutdoorLiving', '#HomeExterior'])
+        
+        # Add price-based tags
+        price = tour_data.get('price', 0)
+        if price > 1000000:
+            base_tags.extend(['#LuxuryRealEstate', '#LuxuryHomes'])
+        
+        # Add location tags
+        city = tour_data.get('city', '').replace(' ', '')
+        if city:
+            base_tags.append(f'#{city}Homes')
+        
+        return base_tags[:10]
+    
+    def _suggest_platforms(self, shot: Dict[str, Any]) -> List[Dict[str, str]]:
+        """Suggest best platforms for this viral moment"""
+        
+        duration = shot.get('duration_seconds', 15)
+        
+        platforms = []
+        
+        # Instagram Reels (15-90 seconds)
+        if 15 <= duration <= 90:
+            platforms.append({
+                'platform': 'Instagram Reels',
+                'format': '9:16 vertical',
+                'max_duration': '90s',
+                'priority': 'high'
+            })
+        
+        # TikTok (15-60 seconds)
+        if 15 <= duration <= 60:
+            platforms.append({
+                'platform': 'TikTok',
+                'format': '9:16 vertical',
+                'max_duration': '60s',
+                'priority': 'high'
+            })
+        
+        # YouTube Shorts (up to 60 seconds)
+        if duration <= 60:
+            platforms.append({
+                'platform': 'YouTube Shorts',
+                'format': '9:16 vertical',
+                'max_duration': '60s',
+                'priority': 'medium'
+            })
+        
+        # Facebook/Instagram Feed
+        platforms.append({
+            'platform': 'Facebook/Instagram Feed',
+            'format': '4:5 or 1:1',
+            'max_duration': '2min',
+            'priority': 'medium'
+        })
+        
+        return platforms
+    
+    def _generate_cta(self, tour_data: Dict[str, Any]) -> str:
+        """Generate call-to-action for the viral clip"""
+        
+        ctas = [
+            "DM me for a private showing! 📩",
+            "Link in bio to schedule your tour! 🏠",
+            "Don't miss this one! Book your showing today! ✨",
+            "Save this before it's gone! 💫",
+            "Tag someone who needs to see this! 👇",
+            "Your dream home is waiting! Contact me now! 📞"
+        ]
+        
+        import random
+        return random.choice(ctas)
+    
+    async def generate_tour_script(
+        self,
+        property_details: Dict[str, Any],
+        rooms: List[str]
+    ) -> Dict[str, Any]:
+        """Generate complete tour script with timing and dialogue"""
+        
+        script = {
+            'property_id': property_details.get('id'),
+            'total_duration': 0,
+            'shots': [],
+            'viral_moments': [],
+            'music_suggestions': [],
+            'opening_hook': '',
+            'closing_cta': ''
+        }
+        
+        # Generate opening hook
+        price = property_details.get('price', 0)
+        bedrooms = property_details.get('bedrooms', 0)
+        script['opening_hook'] = f"Welcome to this stunning {bedrooms}-bedroom home! Let me show you why this is THE one you've been waiting for! 🏠✨"
+        
+        # Generate shot sequence for each room
+        for room in rooms:
+            room_guidance = await self.generate_shot_guidance(
+                RoomType(room),
+                property_details
+            )
+            script['shots'].append(room_guidance)
+            script['total_duration'] += room_guidance.get('duration_seconds', 10)
+        
+        # Add closing
+        script['closing_cta'] = "Ready to make this your home? Contact me today to schedule your private showing! Don't let this opportunity slip away! 🔑"
+        
+        # Suggest background music
+        script['music_suggestions'] = [
+            {'track': 'Upbeat Modern Pop', 'mood': 'energetic', 'platforms': ['Instagram', 'TikTok']},
+            {'track': 'Ambient Luxury', 'mood': 'elegant', 'platforms': ['YouTube', 'Facebook']},
+            {'track': 'Cinematic Orchestral', 'mood': 'dramatic', 'platforms': ['YouTube']}
+        ]
+        
+        return script
+
+
+# Global instance
+_ai_director = None
+
+def get_ai_director() -> AIDirector:
+    """Get or create AI Director instance"""
+    global _ai_director
+    if _ai_director is None:
+        _ai_director = AIDirector()
+    return _ai_director

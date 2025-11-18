@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import axios from '../api';
 import { UserContext } from '../App';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
 
 const LandingPage = () => {
   const [isSignupOpen, setIsSignupOpen] = useState(false);

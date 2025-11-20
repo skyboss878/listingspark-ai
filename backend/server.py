@@ -2268,6 +2268,276 @@ if __name__ == "__main__":
         log_level="info"
     )
 
+
+
+# ==================== CLIENT MANAGEMENT SYSTEM ENDPOINTS ====================
+
+from client_management import (
+    client_service,
+    document_service,
+    ClientCreate,
+    ClientUpdate,
+    DocumentCreate,
+    DocumentSign,
+    DocumentType,
+    DocumentStatus,
+    init_client_tables
+)
+
+# Initialize client tables
+try:
+    init_client_tables()
+except Exception as e:
+    print(f"⚠️ Client tables initialization: {e}")
+
+@app.post("/api/clients")
+async def create_client(
+    client_data: ClientCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new client"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.create_client(user_id, client_data)
+        return client
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create client: {str(e)}")
+
+@app.get("/api/clients")
+async def get_clients(
+    client_type: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get all clients for the current user"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        clients = await client_service.get_clients(user_id, client_type)
+        return clients
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get clients: {str(e)}")
+
+@app.get("/api/clients/{client_id}")
+async def get_client(
+    client_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get specific client with activity and documents"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        
+        # Get client
+        client = await client_service.get_client(client_id, user_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Get activity
+        activity = await client_service.get_client_activity(client_id, user_id)
+        
+        # Get documents
+        documents = await document_service.get_documents(user_id, client_id=client_id)
+        
+        return {
+            "client": client,
+            "activity": activity,
+            "documents": documents
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get client: {str(e)}")
+
+@app.put("/api/clients/{client_id}")
+async def update_client(
+    client_id: str,
+    updates: ClientUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update client information"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.update_client(client_id, user_id, updates)
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Log activity
+        await client_service.log_activity(
+            client_id, user_id, "client_updated",
+            "Client information updated"
+        )
+        
+        return client
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update client: {str(e)}")
+
+@app.get("/api/clients/{client_id}/activity")
+async def get_client_activity(
+    client_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get client activity timeline"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        activity = await client_service.get_client_activity(client_id, user_id)
+        return activity
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get activity: {str(e)}")
+
+
+# ==================== DOCUMENT MANAGEMENT ENDPOINTS ====================
+
+@app.get("/api/templates")
+async def get_document_templates(document_type: Optional[str] = None):
+    """Get document templates"""
+    try:
+        templates = await document_service.get_templates(document_type)
+        return templates
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get templates: {str(e)}")
+
+@app.post("/api/documents")
+async def create_document(
+    doc_data: DocumentCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new document from template or custom content"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.create_document(user_id, doc_data)
+        
+        # Log activity
+        await client_service.log_activity(
+            doc_data.client_id, user_id, "document_created",
+            f"Document '{doc_data.title}' created",
+            {"document_id": document['id'], "document_type": doc_data.document_type.value}
+        )
+        
+        return document
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create document: {str(e)}")
+
+@app.get("/api/documents")
+async def get_documents(
+    client_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get all documents"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        documents = await document_service.get_documents(user_id, client_id, status)
+        return documents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get documents: {str(e)}")
+
+@app.get("/api/documents/{document_id}")
+async def get_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get specific document"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return document
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get document: {str(e)}")
+
+@app.post("/api/documents/{document_id}/send")
+async def send_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Send document to client for signature"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Mark as sent
+        await document_service.send_document(document_id, user_id)
+        
+        # Log activity
+        await client_service.log_activity(
+            document['client_id'], user_id, "document_sent",
+            f"Document '{document['title']}' sent for signature",
+            {"document_id": document_id}
+        )
+        
+        # TODO: Send email with signing link
+        # signing_link = f"https://yourdomain.com/sign/{document_id}"
+        
+        return {
+            "status": "sent",
+            "document_id": document_id,
+            "message": "Document sent successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send document: {str(e)}")
+
+@app.post("/api/documents/{document_id}/sign")
+async def sign_document(sign_data: DocumentSign):
+    """Client endpoint to sign a document (public - no auth required)"""
+    try:
+        # Sign the document
+        success = await document_service.sign_document(sign_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {
+            "status": "signed",
+            "document_id": sign_data.document_id,
+            "signed_at": sign_data.signed_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to sign document: {str(e)}")
+
+@app.get("/api/documents/{document_id}/download")
+async def download_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Download a signed document"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        if document['status'] != DocumentStatus.SIGNED.value:
+            raise HTTPException(status_code=400, detail="Document not signed yet")
+        
+        # TODO: Generate PDF with signature
+        # For now, return content as text
+        return {
+            "document_id": document_id,
+            "title": document['title'],
+            "content": document['content'],
+            "signature_data": document['signature_data'],
+            "signed_at": document['signed_at']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to download document: {str(e)}")
+
+
 # ============================================================
 # SQLite Fallback Auth Endpoints
 # ============================================================

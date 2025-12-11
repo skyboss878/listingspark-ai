@@ -378,11 +378,11 @@ const CreateListing = () => {
             </button>
             <button
               type="button"
-              onClick={() => {
+              onClick={(e) => {
                 if (step < 3) {
                   setStep(step + 1);
                 } else {
-                  handleSubmit();
+                  handleSubmit(e);
                 }
               }}
               disabled={uploading}

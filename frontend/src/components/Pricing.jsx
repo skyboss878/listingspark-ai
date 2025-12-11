@@ -11,7 +11,7 @@ export default function Pricing() {
   const buttonInitialized = useRef(false);
   const scriptLoaded = useRef(false);
   const redirectTimerRef = useRef(null);
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
   const PLAN_ID = 'P-1N875595TN640074WNDTXDAQ';
   const PAYPAL_CLIENT_ID = 'ATYlT9p6S96zZq0t-_SF0CGjwTr29mHE0YyW2TacuJ6QxjnEcznv5TwE6bXhxkEbILf8P5i9rqZz5-SZ';

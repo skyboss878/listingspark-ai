@@ -151,15 +151,18 @@ backend:
 
   - task: "Listing Creation"
     implemented: true
-    working: false
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: false
         agent: "user"
         comment: "User reported listing creation fails. Not investigated yet."
+      - working: true
+        agent: "testing"
+        comment: "✅ FIXED & WORKING - Found and fixed critical issues: 1) Login endpoint missing return statement causing 500 errors, 2) CreateListing.jsx handleSubmit called without event object causing preventDefault error, 3) Multiple frontend components using wrong environment variable (REACT_APP_API_URL instead of REACT_APP_BACKEND_URL). API tested successfully via curl - listings are created and stored correctly. E2E flow tested: login works, form submission works, API returns 200 OK, redirect to dashboard works. Dashboard display has minor issues with MLS endpoint errors but core listing creation functionality is working."
 
 frontend:
   - task: "User Registration Flow"

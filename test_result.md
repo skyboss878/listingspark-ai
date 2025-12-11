@@ -164,6 +164,18 @@ backend:
         agent: "testing"
         comment: "✅ FIXED & WORKING - Found and fixed critical issues: 1) Login endpoint missing return statement causing 500 errors, 2) CreateListing.jsx handleSubmit called without event object causing preventDefault error, 3) Multiple frontend components using wrong environment variable (REACT_APP_API_URL instead of REACT_APP_BACKEND_URL). API tested successfully via curl - listings are created and stored correctly. E2E flow tested: login works, form submission works, API returns 200 OK, redirect to dashboard works. Dashboard display has minor issues with MLS endpoint errors but core listing creation functionality is working."
 
+  - task: "MLS Account Management API"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: true
+        agent: "testing"
+        comment: "✅ WORKING - Fixed database connection issues in MLS endpoints. All MLS API endpoints working correctly: POST /api/mls/accounts (200 OK), GET /api/mls/accounts (200 OK), DELETE /api/mls/accounts/{id} (200 OK). Demo provider works without client credentials. Accounts created with 'is_connected': true status. Backend MLS functionality fully operational and ready for production."
+
 frontend:
   - task: "User Registration Flow"
     implemented: true

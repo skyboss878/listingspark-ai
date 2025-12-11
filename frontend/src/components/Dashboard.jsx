@@ -12,6 +12,7 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement,
 import { UserContext } from '../App';
 import axios from '../api';
 import toast from 'react-hot-toast';
+import TrialBanner from './TrialBanner';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement);
 ChartJS.defaults.color = '#e0e0e0';

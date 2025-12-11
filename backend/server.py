@@ -373,14 +373,24 @@ class ListingCreate(BaseModel):
     state: str
     zip_code: str
     price: float
-    bedrooms: int
-    bathrooms: float
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
     square_feet: int
     lot_size: Optional[float] = None
     year_built: Optional[int] = None
     description: Optional[str] = None
     features: List[str] = []
     images: List[str] = []
+    # Commercial specific
+    office_spaces: Optional[int] = None
+    parking_spaces: Optional[int] = None
+    loading_docks: Optional[int] = None
+    # Land specific
+    zoning: Optional[str] = None
+    topography: Optional[str] = None
+    utilities: Optional[str] = None
+    # Custom fields
+    custom_fields: Optional[Dict[str, str]] = {}
 
 class Listing(ListingCreate):
     id: str

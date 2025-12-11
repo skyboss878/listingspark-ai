@@ -46,30 +46,48 @@ const Dashboard = () => {
   // Fetch all dashboard data from NEW backend
   const fetchDashboardData = useCallback(async () => {
     if (!user?.id) return;
+    
+    // Fetch listings (most important)
     try {
-      const [listingsRes, statsRes, mlsRes, featuresRes] = await Promise.all([
-        api.get('/listings'),
-        api.get('/dashboard/stats'),
-        api.get('/mls/accounts'),
-        api.get('/system/features')
-      ]);
-      
+      const listingsRes = await api.get('/listings');
       setListings(listingsRes.data);
-      setStats(statsRes.data);
-      setMLSAccounts(mlsRes.data);
-      setSystemFeatures(featuresRes.data);
     } catch (error) {
-      console.error('Error fetching dashboard data:', error);
+      console.error('Error fetching listings:', error);
       if (error.response?.status === 401) {
         toast.error('Session expired. Please login again.');
         logout();
         navigate('/login');
-      } else {
-        toast.error('Failed to load dashboard data');
+        return;
       }
-    } finally {
-      setLoading(false);
+      setListings([]);
     }
+    
+    // Fetch other data with individual error handling
+    try {
+      const statsRes = await api.get('/dashboard/stats');
+      setStats(statsRes.data);
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      setStats({});
+    }
+    
+    try {
+      const mlsRes = await api.get('/mls/accounts');
+      setMLSAccounts(mlsRes.data);
+    } catch (error) {
+      console.error('Error fetching MLS accounts:', error);
+      setMLSAccounts([]);
+    }
+    
+    try {
+      const featuresRes = await api.get('/system/features');
+      setSystemFeatures(featuresRes.data);
+    } catch (error) {
+      console.error('Error fetching system features:', error);
+      setSystemFeatures({});
+    }
+    
+    setLoading(false);
   }, [user, logout, navigate]);
 
   useEffect(() => {

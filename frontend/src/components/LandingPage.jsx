@@ -27,10 +27,19 @@ const LandingPage = () => {
         password: formData.password,
       });
       const userData = response.data;
+      
+      // Store token
+      localStorage.setItem('token', userData.access_token);
+      localStorage.setItem('auth_token', userData.access_token);
+      
+      // Store user data
       login(userData.user.email, formData.password);
-      toast.success('Account created successfully! Welcome to Real360 AI!');
+      
+      toast.success('🎉 Account created! Your 3-day free trial has started!');
       setIsSignupOpen(false);
-      navigate('/dashboard'); // Go directly to dashboard
+      
+      // Go to dashboard to start using immediately
+      navigate('/dashboard');
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create account. Please try again.');
       console.error('Signup error:', error.response?.data || error.message);
@@ -46,10 +55,14 @@ const LandingPage = () => {
       });
 
       const userData = response.data;
+      
+      // Store token
+      localStorage.setItem('token', userData.access_token);
+      localStorage.setItem('auth_token', userData.access_token);
+      
       login(formData.email, formData.password);
       setIsLoginOpen(false);
 
-      // Always go to dashboard - no subscription check required
       toast.success('Welcome back!');
       navigate('/dashboard');
     } catch (error) {

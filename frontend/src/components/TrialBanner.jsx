@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AlertCircle, Clock, CreditCard } from 'lucide-react';
-import axios from '../api';
+import api from '../api';
 
 const TrialBanner = () => {
   const [trialInfo, setTrialInfo] = useState(null);

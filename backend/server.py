@@ -1434,7 +1434,7 @@ async def publish_to_mls(
         )
     
     # Get MLS account
-    mls_account = await (await get_database()).get_collection("mls_accounts").find_one({"id": publish_data.mls_account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    mls_account = await db.mls_accounts.find_one({"id": publish_data.mls_account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not mls_account:
         raise HTTPException(status_code=404, detail="MLS account not found")
     

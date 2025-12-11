@@ -17,7 +17,7 @@ export default function Login() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
-  const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+  const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
   const handleSubmit = async (e) => {
     e.preventDefault();

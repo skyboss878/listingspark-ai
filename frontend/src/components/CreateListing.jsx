@@ -8,6 +8,9 @@ const CreateListing = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [uploading, setUploading] = useState(false);
+  const [customFieldName, setCustomFieldName] = useState('');
+  const [customFieldValue, setCustomFieldValue] = useState('');
+  const [customFields, setCustomFields] = useState({});
   const [formData, setFormData] = useState({
     property_type: 'single_family',
     address: '',
@@ -22,7 +25,15 @@ const CreateListing = () => {
     year_built: '',
     description: '',
     features: [],
-    images: []
+    images: [],
+    // Commercial specific
+    office_spaces: '',
+    parking_spaces: '',
+    loading_docks: '',
+    // Land specific
+    zoning: '',
+    topography: '',
+    utilities: ''
   });
 
   const handleInputChange = (e) => {

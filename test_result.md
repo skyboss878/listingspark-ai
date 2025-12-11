@@ -136,15 +136,18 @@ backend:
 
   - task: "User Login"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 2
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Login endpoint exists. Need to test E2E with frontend after fixing user context issues."
+      - working: true
+        agent: "testing"
+        comment: "✅ WORKING - Login endpoint tested successfully. Users can login with registered credentials, tokens are stored correctly, and session management works properly."
 
   - task: "Listing Creation"
     implemented: true

@@ -962,6 +962,10 @@ async def login(login_data: UserLogin):
     if error:
         raise HTTPException(status_code=401, detail=error)
 
+    access_token = AuthService.create_access_token(data={"sub": user["id"]})
+    user_obj = User(**user)
+    return Token(access_token=access_token, user=user_obj)
+
 
 
 # ==================== TRIAL & SUBSCRIPTION ROUTES ====================

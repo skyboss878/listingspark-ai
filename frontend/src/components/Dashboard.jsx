@@ -139,7 +139,7 @@ const Dashboard = () => {
   const completeWorkflow = async (listingId) => {
     try {
       toast.loading('🚀 Running complete workflow...', { id: 'workflow' });
-      await api.post(`/api/workflow/complete/${listingId}`, {
+      await api.post(`/workflow/complete/${listingId}`, {
         tour_style: 'cinematic',
         voice_style: 'professional',
         ai_tone: 'professional'

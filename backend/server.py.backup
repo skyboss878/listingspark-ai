@@ -1161,7 +1161,7 @@ async def upload_images(
     # Update listing if listing_id provided
     if listing_id:
         image_urls = [f["url"] for f in uploaded_files]
-        await db.listings.update_one(
+        await (await get_database()).get_collection("listings").update_one(
             {"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id},
             {
                 "$push": {"images": {"$each": image_urls}},
@@ -1181,7 +1181,7 @@ async def generate_ai_content(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1189,7 +1189,7 @@ async def generate_ai_content(
     ai_content = await AIContentService.generate_listing_content(listing, request.tone)
     
     # Update listing
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {
             "ai_content": ai_content,
@@ -1206,7 +1206,7 @@ async def get_ai_content(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1226,7 +1226,7 @@ async def enhance_listing_images(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1237,7 +1237,7 @@ async def enhance_listing_images(
     )
     
     # Update listing
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {
             "enhanced_images": enhanced_urls,
@@ -1257,7 +1257,7 @@ async def generate_virtual_tour(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1265,7 +1265,7 @@ async def generate_virtual_tour(
         raise HTTPException(status_code=400, detail="Please upload images first")
     
     # Update status to generating
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {"status": ListingStatus.TOUR_GENERATING}}
     )
@@ -1281,7 +1281,7 @@ async def generate_virtual_tour(
             music_track=request.music_track
         )
         
-        await db.listings.update_one(
+        await (await get_database()).get_collection("listings").update_one(
             {"id": listing_id},
             {"$set": {
                 "virtual_tour": tour_data,
@@ -1305,7 +1305,7 @@ async def get_virtual_tour(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1321,7 +1321,7 @@ async def get_tour_status(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1432,7 +1432,7 @@ async def publish_to_mls(
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
     # Get listing
-    listing = await db.listings.find_one({"id": publish_data.listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": publish_data.listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1459,7 +1459,7 @@ async def publish_to_mls(
     
     if result['success']:
         # Update listing
-        await db.listings.update_one(
+        await (await get_database()).get_collection("listings").update_one(
             {"id": publish_data.listing_id},
             {"$set": {
                 "status": ListingStatus.PUBLISHED,
@@ -1491,7 +1491,7 @@ async def get_syndication_status(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1519,7 +1519,7 @@ async def publish_to_platforms(
     """Publish listing to multiple platforms (Zillow, Realtor.com, Facebook, Trulia)"""
     from platform_integrations_v2 import get_platform_manager, ListingData, PlatformType
     
-    listing = await db.listings.find_one({
+    listing = await (await get_database()).get_collection("listings").find_one({
         "id": listing_id,
         "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
     })
@@ -1572,7 +1572,7 @@ async def publish_to_platforms(
             "error": result.error_message
         }
     
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {
             "platform_syndication": platform_data,
@@ -1592,7 +1592,7 @@ async def get_platform_status(
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
     """Get platform syndication status"""
-    listing = await db.listings.find_one({
+    listing = await (await get_database()).get_collection("listings").find_one({
         "id": listing_id,
         "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
     })
@@ -1795,7 +1795,7 @@ async def complete_listing_workflow(
     3. Generate virtual tour with 360° camera
     4. Mark as ready to publish
     """
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1807,7 +1807,7 @@ async def complete_listing_workflow(
             # Step 1: Generate AI content
             logger.info(f"Generating AI content for listing {listing_id}")
             ai_content = await AIContentService.generate_listing_content(listing, ai_tone)
-            await db.listings.update_one(
+            await (await get_database()).get_collection("listings").update_one(
                 {"id": listing_id},
                 {"$set": {"ai_content": ai_content, "updated_at": datetime.utcnow()}}
             )
@@ -1815,20 +1815,20 @@ async def complete_listing_workflow(
             # Step 2: Enhance images
             logger.info(f"Enhancing images for listing {listing_id}")
             enhanced_urls = await ImageEnhancementService.enhance_images(listing)
-            await db.listings.update_one(
+            await (await get_database()).get_collection("listings").update_one(
                 {"id": listing_id},
                 {"$set": {"enhanced_images": enhanced_urls, "updated_at": datetime.utcnow()}}
             )
             
             # Step 3: Generate virtual tour
             logger.info(f"Generating virtual tour for listing {listing_id}")
-            await db.listings.update_one(
+            await (await get_database()).get_collection("listings").update_one(
                 {"id": listing_id},
                 {"$set": {"status": ListingStatus.TOUR_GENERATING}}
             )
             
             # Refresh listing data
-            updated_listing = await db.listings.find_one({"id": listing_id})
+            updated_listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id})
             
             tour_data = await TourGenerationService.generate_tour(
                 listing=updated_listing,
@@ -1839,7 +1839,7 @@ async def complete_listing_workflow(
             )
             
             # Step 4: Mark as ready to publish
-            await db.listings.update_one(
+            await (await get_database()).get_collection("listings").update_one(
                 {"id": listing_id},
                 {"$set": {
                     "virtual_tour": tour_data,
@@ -1852,7 +1852,7 @@ async def complete_listing_workflow(
             
         except Exception as e:
             logger.error(f"Workflow error for listing {listing_id}: {e}")
-            await db.listings.update_one(
+            await (await get_database()).get_collection("listings").update_one(
                 {"id": listing_id},
                 {"$set": {"status": ListingStatus.DRAFT, "updated_at": datetime.utcnow()}}
             )
@@ -1878,7 +1878,7 @@ async def get_workflow_status(
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
     """Get current workflow status for a listing"""
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1923,7 +1923,7 @@ async def get_shot_guidance(
     """Get real-time AI director guidance for current shot"""
     from ai_director import get_ai_director, RoomType
     
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1946,7 +1946,7 @@ async def generate_tour_script(
     """Generate complete AI-guided tour script"""
     from ai_director import get_ai_director
     
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1954,7 +1954,7 @@ async def generate_tour_script(
     script = await director.generate_tour_script(listing, rooms)
     
     # Save script to listing
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {"tour_script": script, "updated_at": datetime.utcnow()}}
     )
@@ -1972,7 +1972,7 @@ async def generate_viral_caption(
     """Generate viral social media caption"""
     from viral_content_engine import get_viral_engine
     
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1991,7 +1991,7 @@ async def generate_platform_strategy(
     """Generate multi-platform viral content strategy"""
     from viral_content_engine import get_viral_engine
     
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -1999,7 +1999,7 @@ async def generate_platform_strategy(
     strategy = await engine.generate_platform_strategy(listing, tour_duration)
     
     # Save strategy to listing
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {"viral_strategy": strategy, "updated_at": datetime.utcnow()}}
     )
@@ -2016,7 +2016,7 @@ async def generate_viral_clips(
     from viral_content_engine import get_viral_engine
     from ai_director import get_ai_director
     
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -2038,7 +2038,7 @@ async def generate_viral_clips(
     clips = await engine.generate_viral_clips(tour_path, viral_moments, listing)
     
     # Save clips to listing
-    await db.listings.update_one(
+    await (await get_database()).get_collection("listings").update_one(
         {"id": listing_id},
         {"$set": {"viral_clips": clips, "updated_at": datetime.utcnow()}}
     )
@@ -2096,7 +2096,7 @@ async def generate_narration(request: dict):
 async def check_payment_status(user_id: str, db: AsyncIOMotorDatabase = Depends(get_mongo_db)):
     """Check if user has already paid"""
     try:
-        response = await db.payments.find_one({"user_id": user_id, "status": "completed"})
+        response = await (await get_database()).get_collection("payments").find_one({"user_id": user_id, "status": "completed"})
         
         if response:
             return {
@@ -2124,7 +2124,7 @@ async def verify_payment(request: dict, db: AsyncIOMotorDatabase = Depends(get_m
             raise HTTPException(status_code=400, detail="Missing session_id or user_id")
         
         # Check if payment already verified for this user
-        existing = await db.payments.find_one({"user_id": user_id, "status": "completed"})
+        existing = await (await get_database()).get_collection("payments").find_one({"user_id": user_id, "status": "completed"})
         
         if existing:
             logger.info(f"Payment already verified for user {user_id}")
@@ -2147,7 +2147,7 @@ async def verify_payment(request: dict, db: AsyncIOMotorDatabase = Depends(get_m
             'created_at': datetime.utcnow()
         }
         
-        await db.payments.insert_one(payment_data)
+        await (await get_database()).get_collection("payments").insert_one(payment_data)
         
         return {
             "success": True,
@@ -2168,7 +2168,7 @@ async def export_listing_data(
     format: str = "json"
 ):
     """Export listing data in various formats"""
-    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
@@ -2286,7 +2286,7 @@ async def mls_webhook(
     
     listing_id = payload.get("listing_id")
     if listing_id:
-        await db.listings.update_one(
+        await (await get_database()).get_collection("listings").update_one(
             {"mls_listing_id": listing_id},
             {"$set": {
                 "syndication": payload.get("syndication_status", {}),

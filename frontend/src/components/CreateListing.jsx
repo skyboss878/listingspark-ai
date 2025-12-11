@@ -264,62 +264,162 @@ const CreateListing = () => {
 
           {step === 2 && (
             <div className="space-y-4">
-              <h2 className="text-2xl font-bold mb-6">Property Details</h2>
+              <h2 className="text-2xl font-bold mb-6">
+                {formData.property_type === 'commercial' ? 'Commercial' : 
+                 formData.property_type === 'land' ? 'Land' : 'Residential'} Property Details
+              </h2>
               
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block mb-2 text-sm font-medium">Bedrooms</label>
-                  <input
-                    type="number"
-                    name="bedrooms"
-                    value={formData.bedrooms}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
-                    placeholder="4"
-                    required
-                  />
-                </div>
+              {/* Residential Fields */}
+              {!['commercial', 'land'].includes(formData.property_type) && (
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block mb-2 text-sm font-medium">Bedrooms</label>
+                    <input
+                      type="number"
+                      name="bedrooms"
+                      value={formData.bedrooms}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                      placeholder="4"
+                      required
+                    />
+                  </div>
 
-                <div>
-                  <label className="block mb-2 text-sm font-medium">Bathrooms</label>
-                  <input
-                    type="number"
-                    step="0.5"
-                    name="bathrooms"
-                    value={formData.bathrooms}
-                    onChange={handleInputChange}
-                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
-                    placeholder="2.5"
-                    required
-                  />
+                  <div>
+                    <label className="block mb-2 text-sm font-medium">Bathrooms</label>
+                    <input
+                      type="number"
+                      step="0.5"
+                      name="bathrooms"
+                      value={formData.bathrooms}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                      placeholder="2.5"
+                      required
+                    />
+                  </div>
                 </div>
-              </div>
+              )}
 
+              {/* Commercial Fields */}
+              {formData.property_type === 'commercial' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block mb-2 text-sm font-medium">Office Spaces</label>
+                      <input
+                        type="number"
+                        name="office_spaces"
+                        value={formData.office_spaces}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                        placeholder="10"
+                        required
+                      />
+                    </div>
+
+                    <div>
+                      <label className="block mb-2 text-sm font-medium">Parking Spaces</label>
+                      <input
+                        type="number"
+                        name="parking_spaces"
+                        value={formData.parking_spaces}
+                        onChange={handleInputChange}
+                        className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                        placeholder="50"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="block mb-2 text-sm font-medium">Loading Docks (optional)</label>
+                    <input
+                      type="number"
+                      name="loading_docks"
+                      value={formData.loading_docks}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                      placeholder="2"
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Land Fields */}
+              {formData.property_type === 'land' && (
+                <>
+                  <div>
+                    <label className="block mb-2 text-sm font-medium">Zoning</label>
+                    <input
+                      type="text"
+                      name="zoning"
+                      value={formData.zoning}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                      placeholder="Residential, Commercial, Agricultural..."
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-2 text-sm font-medium">Topography</label>
+                    <input
+                      type="text"
+                      name="topography"
+                      value={formData.topography}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                      placeholder="Flat, Rolling, Hillside..."
+                      required
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block mb-2 text-sm font-medium">Utilities Available</label>
+                    <input
+                      type="text"
+                      name="utilities"
+                      value={formData.utilities}
+                      onChange={handleInputChange}
+                      className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                      placeholder="Water, Electric, Gas, Sewer..."
+                      required
+                    />
+                  </div>
+                </>
+              )}
+
+              {/* Common Fields */}
               <div>
-                <label className="block mb-2 text-sm font-medium">Square Feet</label>
+                <label className="block mb-2 text-sm font-medium">
+                  {formData.property_type === 'land' ? 'Land Area' : 'Square Feet'}
+                </label>
                 <input
                   type="number"
                   name="square_feet"
                   value={formData.square_feet}
                   onChange={handleInputChange}
                   className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
-                  placeholder="2500"
+                  placeholder={formData.property_type === 'land' ? "43560 (1 acre)" : "2500"}
                   required
                 />
               </div>
 
-              <div>
-                <label className="block mb-2 text-sm font-medium">Lot Size (acres, optional)</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  name="lot_size"
-                  value={formData.lot_size}
-                  onChange={handleInputChange}
-                  className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
-                  placeholder="0.25"
-                />
-              </div>
+              {formData.property_type !== 'land' && (
+                <div>
+                  <label className="block mb-2 text-sm font-medium">Lot Size (acres, optional)</label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    name="lot_size"
+                    value={formData.lot_size}
+                    onChange={handleInputChange}
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                    placeholder="0.25"
+                  />
+                </div>
+              )}
 
               <div>
                 <label className="block mb-2 text-sm font-medium">Year Built (optional)</label>
@@ -331,6 +431,55 @@ const CreateListing = () => {
                   className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
                   placeholder="2020"
                 />
+              </div>
+
+              {/* Custom Fields Section */}
+              <div className="border-t border-white/20 pt-4 mt-6">
+                <h3 className="text-lg font-semibold mb-4">📝 Custom Fields (Optional)</h3>
+                <p className="text-sm text-purple-200 mb-4">Add custom property details like "Cellar", "Wine Room", "Home Theater", etc.</p>
+                
+                {Object.keys(customFields).length > 0 && (
+                  <div className="mb-4 space-y-2">
+                    {Object.entries(customFields).map(([key, value]) => (
+                      <div key={key} className="flex items-center justify-between bg-purple-500/20 rounded-lg px-4 py-2">
+                        <div>
+                          <span className="font-semibold">{key}:</span> {value}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleRemoveCustomField(key)}
+                          className="text-red-400 hover:text-red-300"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                <div className="grid grid-cols-2 gap-4 mb-2">
+                  <input
+                    type="text"
+                    value={customFieldName}
+                    onChange={(e) => setCustomFieldName(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                    placeholder="Field name (e.g., Cellar)"
+                  />
+                  <input
+                    type="text"
+                    value={customFieldValue}
+                    onChange={(e) => setCustomFieldValue(e.target.value)}
+                    className="w-full px-4 py-3 rounded-lg bg-white/10 border border-white/20 text-white placeholder-white/50 focus:outline-none focus:border-purple-400"
+                    placeholder="Value (e.g., Yes, 500 sq ft)"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddCustomField}
+                  className="w-full py-3 bg-purple-600/50 rounded-lg hover:bg-purple-600 transition-colors"
+                >
+                  + Add Custom Field
+                </button>
               </div>
 
               <div>

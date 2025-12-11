@@ -48,10 +48,10 @@ const Dashboard = () => {
     if (!user?.id) return;
     try {
       const [listingsRes, statsRes, mlsRes, featuresRes] = await Promise.all([
-        api.get('/api/listings'),
-        api.get('/api/dashboard/stats'),
-        api.get('/api/mls/accounts'),
-        api.get('/api/system/features')
+        api.get('/listings'),
+        api.get('/dashboard/stats'),
+        api.get('/mls/accounts'),
+        api.get('/system/features')
       ]);
       
       setListings(listingsRes.data);

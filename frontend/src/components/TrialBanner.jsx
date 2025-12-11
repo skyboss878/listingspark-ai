@@ -31,7 +31,12 @@ const TrialBanner = () => {
     }
   };
 
-  if (loading || !trialInfo) return null;
+  console.log('TrialBanner: Render check - loading:', loading, 'trialInfo:', trialInfo);
+  
+  if (loading || !trialInfo) {
+    console.log('TrialBanner: Returning null - loading:', loading, 'trialInfo:', !!trialInfo);
+    return null;
+  }
 
   // Trial expired - must subscribe
   if (trialInfo.trial_expired && trialInfo.needs_subscription) {

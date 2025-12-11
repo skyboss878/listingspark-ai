@@ -1,20 +1,8 @@
 import React, { useState } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import axios from '../api';
+import api from '../api';
 import toast from 'react-hot-toast';
-
-const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 const CreateListing = () => {
   const navigate = useNavigate();
@@ -65,7 +53,7 @@ const CreateListing = () => {
     files.forEach(file => formDataObj.append('files', file));
 
     try {
-      const response = await api.post('/api/upload/images', formDataObj, {
+      const response = await api.post('/upload/images', formDataObj, {
         headers: { 'Content-Type': 'multipart/form-data' }
       });
       
@@ -86,7 +74,7 @@ const CreateListing = () => {
       toast.loading('Creating listing...', { id: 'create' });
       // eslint-disable-next-line no-unused-vars
       
-      await api.post('/api/listings', {
+      await api.post('/listings', {
         ...formData,
         price: parseFloat(formData.price),
         bedrooms: parseInt(formData.bedrooms),

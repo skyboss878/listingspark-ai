@@ -72,9 +72,7 @@ const ProCamera360 = ({ onCapture, onClose, propertyType = 'luxury' }) => {
         stream.getTracks().forEach(track => track.stop());
       }
       window.removeEventListener('deviceorientation', handleOrientation);
-  // eslint-disable-next-line react-hooks/exhaustive-deps
     };
-// eslint-disable-next-line react-hooks/exhaustive-deps
   }, [stream, handleOrientation]);
 
   const startCamera = async () => {

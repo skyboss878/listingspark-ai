@@ -20,7 +20,7 @@ ChartJS.defaults.borderColor = 'rgba(255, 255, 255, 0.1)';
 
 // Enhanced API client with auth token
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+  baseURL: process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000',
 });
 
 // Add token to all requests

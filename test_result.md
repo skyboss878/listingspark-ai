@@ -183,6 +183,18 @@ frontend:
         agent: "testing"
         comment: "✅ WORKING - Registration flow tested end-to-end successfully. Modal opens correctly, form submission works, API calls return 200 OK, user data stored in localStorage, and redirects to dashboard immediately. No PayPal loop issues."
 
+  - task: "MLS Account Creation Flow"
+    implemented: true
+    working: false
+    file: "/app/frontend/src/components/MLSSetup.jsx"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+      - working: false
+        agent: "testing"
+        comment: "❌ FRONTEND AUTH BLOCKING - Backend MLS API fully working (tested via curl), but frontend authentication prevents access to /mls-setup page. Users cannot login through UI, so protected routes redirect to login. Backend verified: POST /api/mls/accounts works (200 OK), demo provider creates connected accounts. Issue is frontend session management, not MLS functionality."
+
   - task: "User Login Flow"
     implemented: true
     working: true

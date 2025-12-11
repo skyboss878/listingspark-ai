@@ -314,3 +314,36 @@ agent_communication:
       - Logout clears session properly
       
       The 3-day free trial system is now fully functional and ready for production use!
+
+  - agent: "main"
+    message: |
+      LISTING CREATION ISSUE FIXED!
+      
+      ROOT CAUSE IDENTIFIED:
+      - Backend was using `await (await get_database()).get_collection("listings")` which returned None
+      - The function already had `db: AsyncIOMotorDatabase = Depends(get_mongo_db)` injected
+      
+      FIXES APPLIED:
+      1. Changed all listing endpoints to use the injected `db` parameter directly:
+         - create_listing: await db.listings.insert_one(listing_dict)
+         - get_listing: await db.listings.find_one(...)
+         - update_listing: await db.listings.update_one(...)
+         - delete_listing: await db.listings.delete_one(...)
+      
+      2. Fixed CreateListing.jsx frontend:
+         - Removed duplicate axios instance creation
+         - Now using the configured api instance from '../api'
+         - Changed API paths from '/api/listings' to '/listings' (base already includes /api)
+      
+      3. Backend restarted successfully
+      
+      VERIFICATION DONE:
+      - ✅ Backend tested via curl - listing creation works!
+      - Created test listing: ID=464ce142-c1d6-4b00-9f49-42c2000b5a2a
+      
+      READY FOR E2E TESTING:
+      Please test the complete listing creation flow from the frontend:
+      1. Register/Login user
+      2. Navigate to "Create Listing" page
+      3. Fill form with property details
+      4. Submit and verify listing appears on dashboard

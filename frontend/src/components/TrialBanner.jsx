@@ -14,7 +14,7 @@ const TrialBanner = () => {
 
   const checkTrialStatus = async () => {
     try {
-      const response = await axios.get('/api/auth/trial-info');
+      const response = await api.get('/auth/trial-info');
       setTrialInfo(response.data);
       setLoading(false);
 

@@ -97,7 +97,7 @@ const Dashboard = () => {
   const generateVirtualTour = async (listingId) => {
     try {
       toast.loading('🎥 Generating 360° tour...', { id: 'tour-gen' });
-      await api.post(`/api/tours/generate/${listingId}`, {
+      await api.post(`/tours/generate/${listingId}`, {
         listing_id: listingId,
         style: 'cinematic',
         voice_style: 'professional',

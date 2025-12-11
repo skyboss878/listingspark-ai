@@ -200,15 +200,18 @@ frontend:
 
   - task: "Trial Banner Display"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/frontend/src/components/TrialBanner.jsx"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "TrialBanner component created and integrated into Dashboard.jsx. Needs E2E testing to verify display and trial countdown."
+      - working: true
+        agent: "testing"
+        comment: "✅ WORKING - TrialBanner now displays correctly on dashboard! Fixed API configuration issue in /app/frontend/src/api.js. Banner shows 'Free Trial Active - 2 days remaining in your free trial' with blue background and clock icon. Trial countdown working properly."
 
   - task: "Dashboard Access After Registration"
     implemented: true

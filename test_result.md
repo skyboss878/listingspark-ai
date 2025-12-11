@@ -121,15 +121,18 @@ backend:
 
   - task: "Trial Status Endpoint"
     implemented: true
-    working: "NA"
+    working: true
     file: "/app/backend/server.py"
     stuck_count: 0
     priority: "high"
-    needs_retesting: true
+    needs_retesting: false
     status_history:
       - working: "NA"
         agent: "main"
         comment: "Endpoints /api/auth/trial-status and /api/auth/trial-info implemented. Need to verify they work correctly with frontend."
+      - working: true
+        agent: "testing"
+        comment: "✅ WORKING - Both endpoints tested and working correctly. /api/auth/trial-info returns proper trial data with authentication. API calls successful with 200 status."
 
   - task: "User Login"
     implemented: true

@@ -101,17 +101,22 @@ const CreateListing = () => {
     
     try {
       toast.loading('Creating listing...', { id: 'create' });
-      // eslint-disable-next-line no-unused-vars
       
-      await api.post('/listings', {
+      const payload = {
         ...formData,
         price: parseFloat(formData.price),
-        bedrooms: parseInt(formData.bedrooms),
-        bathrooms: parseFloat(formData.bathrooms),
+        bedrooms: formData.bedrooms ? parseInt(formData.bedrooms) : null,
+        bathrooms: formData.bathrooms ? parseFloat(formData.bathrooms) : null,
         square_feet: parseInt(formData.square_feet),
         lot_size: formData.lot_size ? parseFloat(formData.lot_size) : null,
-        year_built: formData.year_built ? parseInt(formData.year_built) : null
-      });
+        year_built: formData.year_built ? parseInt(formData.year_built) : null,
+        office_spaces: formData.office_spaces ? parseInt(formData.office_spaces) : null,
+        parking_spaces: formData.parking_spaces ? parseInt(formData.parking_spaces) : null,
+        loading_docks: formData.loading_docks ? parseInt(formData.loading_docks) : null,
+        custom_fields: customFields
+      };
+      
+      await api.post('/listings', payload);
       
       toast.success('✅ Listing created!', { id: 'create' });
       navigate(`/dashboard`);

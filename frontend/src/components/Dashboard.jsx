@@ -216,6 +216,9 @@ const Dashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
       <div className="container mx-auto px-6 py-8">
+        {/* Trial Banner */}
+        <TrialBanner />
+        
         {/* Enhanced Header */}
         <div className="flex flex-wrap justify-between items-center gap-4 mb-8">
           <div>

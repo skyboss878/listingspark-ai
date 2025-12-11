@@ -80,7 +80,7 @@ const Dashboard = () => {
   const generateAIContent = async (listingId) => {
     try {
       toast.loading('🤖 Generating AI content...', { id: 'ai-gen' });
-      await api.post(`/api/content/generate/${listingId}`, {
+      await api.post(`/content/generate/${listingId}`, {
         listing_id: listingId,
         include_social_media: true,
         include_email_template: true,

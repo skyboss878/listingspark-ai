@@ -962,6 +962,67 @@ async def login(login_data: UserLogin):
     if error:
         raise HTTPException(status_code=401, detail=error)
 
+
+
+# ==================== TRIAL & SUBSCRIPTION ROUTES ====================
+
+from trial_system import (
+    init_trial_system,
+    check_trial_status,
+    get_trial_info,
+    activate_subscription,
+    cancel_subscription
+)
+
+# Initialize trial system
+try:
+    init_trial_system()
+except Exception as e:
+    print(f"⚠️ Trial system initialization: {e}")
+
+@app.get("/api/auth/trial-status")
+async def get_trial_status(current_user: User = Depends(get_current_user)):
+    """Get current user's trial status"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        status = check_trial_status(user_id)
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check trial: {str(e)}")
+
+@app.get("/api/auth/trial-info")
+async def get_user_trial_info(current_user: User = Depends(get_current_user)):
+    """Get detailed trial information for dashboard"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        info = get_trial_info(user_id)
+        return info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get trial info: {str(e)}")
+
+@app.post("/api/subscription/activate")
+async def activate_user_subscription(
+    subscription_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Activate subscription after PayPal payment"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        result = activate_subscription(user_id, subscription_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to activate subscription: {str(e)}")
+
+@app.post("/api/subscription/cancel")
+async def cancel_user_subscription(current_user: User = Depends(get_current_user)):
+    """Cancel user's subscription"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        success = cancel_subscription(user_id)
+        return {"success": success, "message": "Subscription cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel subscription: {str(e)}")
+
     access_token = AuthService.create_access_token(data={"sub": user["id"]})
     user_obj = User(**user)
     return Token(access_token=access_token, user=user_obj)

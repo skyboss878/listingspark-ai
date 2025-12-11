@@ -149,7 +149,7 @@ const Dashboard = () => {
       // Poll for completion
       const interval = setInterval(async () => {
         try {
-          const response = await api.get(`/api/workflow/status/${listingId}`);
+          const response = await api.get(`/workflow/status/${listingId}`);
           if (response.data.steps_completed.ready_to_publish) {
             clearInterval(interval);
             toast.success('🎉 Listing is ready to publish!');

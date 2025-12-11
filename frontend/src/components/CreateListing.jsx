@@ -54,6 +54,24 @@ const CreateListing = () => {
     });
   };
 
+  const handleAddCustomField = () => {
+    if (customFieldName && customFieldValue) {
+      setCustomFields({
+        ...customFields,
+        [customFieldName]: customFieldValue
+      });
+      setCustomFieldName('');
+      setCustomFieldValue('');
+      toast.success(`Custom field "${customFieldName}" added!`);
+    }
+  };
+
+  const handleRemoveCustomField = (fieldName) => {
+    const newFields = { ...customFields };
+    delete newFields[fieldName];
+    setCustomFields(newFields);
+  };
+
   // eslint-disable-next-line no-unused-vars
   const handleImageUpload = async (e) => {
     const files = Array.from(e.target.files);

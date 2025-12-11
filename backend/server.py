@@ -1352,7 +1352,7 @@ async def create_mls_account(
         account_dict["is_connected"] = test.get('connected', False)
     await mls.close()
     
-    await (await get_database()).get_collection("mls_accounts").insert_one(account_dict)
+    await db.mls_accounts.insert_one(account_dict)
     return MLSAccount(**{k: v for k, v in account_dict.items() if k not in ['client_id', 'client_secret']})
 
 @app.get("/api/mls/accounts", response_model=List[MLSAccount])
@@ -1360,7 +1360,7 @@ async def get_mls_accounts(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    accounts = await (await get_database()).get_collection("mls_accounts").find({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}).to_list(100)
+    accounts = await db.mls_accounts.find({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}).to_list(100)
     return [MLSAccount(**{k: v for k, v in acc.items() if k not in ['client_id', 'client_secret']}) for acc in accounts]
 
 @app.get("/api/mls/accounts/{account_id}", response_model=MLSAccount)
@@ -1369,7 +1369,7 @@ async def get_mls_account(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    account = await (await get_database()).get_collection("mls_accounts").find_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    account = await db.mls_accounts.find_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not account:
         raise HTTPException(status_code=404, detail="MLS account not found")
     return MLSAccount(**{k: v for k, v in account.items() if k not in ['client_id', 'client_secret']})
@@ -1380,7 +1380,7 @@ async def test_mls_connection(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    account = await (await get_database()).get_collection("mls_accounts").find_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    account = await db.mls_accounts.find_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not account:
         raise HTTPException(status_code=404, detail="MLS account not found")
     
@@ -1393,7 +1393,7 @@ async def test_mls_connection(
     result = await mls.test_connection()
     await mls.close()
     
-    await (await get_database()).get_collection("mls_accounts").update_one(
+    await db.mls_accounts.update_one(
         {"id": account_id},
         {"$set": {
             "is_connected": result.get('connected', False),

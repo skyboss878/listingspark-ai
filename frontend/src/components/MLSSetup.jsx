@@ -1,20 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import axios from '../api';
+import api from '../api';
 import toast from 'react-hot-toast';
-
-const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
-});
-
-api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('auth_token');
-  if (token) {
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
 
 const MLSSetup = () => {
   const navigate = useNavigate();
@@ -35,7 +23,7 @@ const MLSSetup = () => {
 
   const fetchAccounts = async () => {
     try {
-      const response = await api.get('/api/mls/accounts');
+      const response = await api.get('/mls/accounts');
       setAccounts(response.data);
     } catch (error) {
       console.error('Error fetching MLS accounts:', error);
@@ -50,7 +38,7 @@ const MLSSetup = () => {
     try {
       toast.loading('Connecting to MLS...', { id: 'mls-connect' });
       
-      const response = await api.post('/api/mls/accounts', formData);
+      const response = await api.post('/mls/accounts', formData);
       
       if (response.data.is_connected) {
         toast.success('✅ MLS account connected successfully!', { id: 'mls-connect' });
@@ -75,7 +63,7 @@ const MLSSetup = () => {
   const testConnection = async (accountId) => {
     try {
       toast.loading('Testing connection...', { id: 'test' });
-      const response = await api.post(`/api/mls/test/${accountId}`);
+      const response = await api.post(`/mls/test/${accountId}`);
       
       if (response.data.connected) {
         toast.success('✅ Connection successful!', { id: 'test' });
@@ -93,7 +81,7 @@ const MLSSetup = () => {
     if (!window.confirm('Are you sure you want to delete this MLS account?')) return;
     
     try {
-      await api.delete(`/api/mls/accounts/${accountId}`);
+      await api.delete(`/mls/accounts/${accountId}`);
       toast.success('MLS account deleted');
       fetchAccounts();
     } catch (error) {

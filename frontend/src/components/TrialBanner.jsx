@@ -14,7 +14,9 @@ const TrialBanner = () => {
 
   const checkTrialStatus = async () => {
     try {
+      console.log('TrialBanner: Checking trial status...');
       const response = await api.get('/auth/trial-info');
+      console.log('TrialBanner: API response:', response.data);
       setTrialInfo(response.data);
       setLoading(false);
 
@@ -24,7 +26,7 @@ const TrialBanner = () => {
         // setTimeout(() => navigate('/pricing'), 3000);
       }
     } catch (error) {
-      console.error('Error checking trial:', error);
+      console.error('TrialBanner: Error checking trial:', error);
       setLoading(false);
     }
   };

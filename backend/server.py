@@ -919,7 +919,7 @@ async def health_check():
 
 @app.post("/api/auth/register", response_model=Token)
 async def register(user_data: UserCreate):
-    """Register a new user with SQLite"""
+    """Register a new user with SQLite and start 3-day free trial"""
     if Database.sqlite_auth is None:
         raise HTTPException(status_code=503, detail="Auth system not initialized")
 
@@ -934,6 +934,14 @@ async def register(user_data: UserCreate):
 
     if error:
         raise HTTPException(status_code=400, detail=error)
+
+    # Start 3-day free trial automatically
+    try:
+        from trial_system import start_free_trial
+        trial_info = start_free_trial(user["id"])
+        user["trial_info"] = trial_info
+    except Exception as e:
+        print(f"Warning: Could not start trial: {e}")
 
     access_token = AuthService.create_access_token(data={"sub": user["id"]})
     user_obj = User(**user)

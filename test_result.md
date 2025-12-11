@@ -241,8 +241,7 @@ metadata:
   run_ui: true
 
 test_plan:
-  current_focus:
-    - "Listing Creation"  # Only remaining task to test
+  current_focus: []  # All high priority tasks completed
   stuck_tasks: []  # All previously stuck tasks have been resolved
   test_all: false
   test_priority: "high_first"
@@ -254,6 +253,7 @@ test_plan:
     - "Trial Status Endpoint"
     - "User Registration Flow"
     - "User Login Flow"
+    - "Listing Creation"
 
 agent_communication:
   - agent: "main"

@@ -117,7 +117,7 @@ const Dashboard = () => {
   const pollTourStatus = async (listingId) => {
     const interval = setInterval(async () => {
       try {
-        const response = await api.get(`/api/tours/${listingId}/status`);
+        const response = await api.get(`/tours/${listingId}/status`);
         if (response.data.status === 'completed') {
           clearInterval(interval);
           toast.success('🎉 Virtual tour ready!');

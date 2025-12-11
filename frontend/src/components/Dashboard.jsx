@@ -176,7 +176,7 @@ const Dashboard = () => {
 
     try {
       toast.loading('📤 Publishing to MLS...', { id: 'publish' });
-      await api.post('/api/mls/publish', {
+      await api.post('/mls/publish', {
         listing_id: listingId,
         mls_account_id: mlsAccounts[0].id
       });

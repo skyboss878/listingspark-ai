@@ -207,6 +207,29 @@ const Dashboard = () => {
     }
   };
 
+  // Social media sharing
+  const shareToSocialMedia = (listing, platform) => {
+    const listingUrl = `${window.location.origin}/listing/${listing.id}`;
+    const text = `Check out this property: ${listing.address}, ${listing.city} - $${listing.price?.toLocaleString()}`;
+    
+    const urls = {
+      facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(listingUrl)}`,
+      twitter: `https://twitter.com/intent/tweet?url=${encodeURIComponent(listingUrl)}&text=${encodeURIComponent(text)}`,
+      linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(listingUrl)}`,
+      instagram: listingUrl // Instagram doesn't support direct sharing, copy link instead
+    };
+
+    if (platform === 'instagram' || platform === 'copy') {
+      navigator.clipboard.writeText(listingUrl);
+      toast.success('Link copied to clipboard!');
+    } else {
+      window.open(urls[platform], '_blank', 'width=600,height=400');
+      toast.success(`Opening ${platform}...`);
+    }
+    
+    setSocialMenuOpen(null);
+  };
+
   // Get status badge
   const getStatusBadge = (status) => {
     const badges = {

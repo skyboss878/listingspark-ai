@@ -28,9 +28,9 @@ const LandingPage = () => {
       });
       const userData = response.data;
       login(userData.user.email, formData.password);
-      toast.success('Account created! Please select a plan to continue.');
+      toast.success('Account created successfully! Welcome to Real360 AI!');
       setIsSignupOpen(false);
-      navigate('/pricing');
+      navigate('/dashboard'); // Go directly to dashboard
     } catch (error) {
       toast.error(error.response?.data?.detail || 'Failed to create account. Please try again.');
       console.error('Signup error:', error.response?.data || error.message);
@@ -49,14 +49,9 @@ const LandingPage = () => {
       login(formData.email, formData.password);
       setIsLoginOpen(false);
 
-      // Check if user has active subscription
-      if (userData.subscription && userData.subscription.active) {
-        toast.success('Welcome back!');
-        navigate('/dashboard');
-      } else {
-        toast.success('Please select a subscription plan');
-        navigate('/pricing');
-      }
+      // Always go to dashboard - no subscription check required
+      toast.success('Welcome back!');
+      navigate('/dashboard');
     } catch (error) {
       toast.error('Login failed. Please check your credentials.');
       console.error('Login error:', error);

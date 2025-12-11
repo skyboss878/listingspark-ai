@@ -1409,7 +1409,7 @@ async def delete_mls_account(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    result = await (await get_database()).get_collection("mls_accounts").delete_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    result = await db.mls_accounts.delete_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="MLS account not found")
     return {"message": "MLS account deleted successfully"}

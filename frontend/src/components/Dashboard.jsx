@@ -486,6 +486,57 @@ const Dashboard = () => {
                             </button>
                           )}
                         </div>
+
+                        {/* Social Media Share Dropdown */}
+                        <div className="relative mt-2">
+                          <button
+                            onClick={() => setSocialMenuOpen(socialMenuOpen === listing.id ? null : listing.id)}
+                            className="w-full bg-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-700 transition-all text-sm flex items-center justify-center gap-2"
+                          >
+                            <Share2 className="w-4 h-4" />
+                            Share on Social Media
+                          </button>
+                          
+                          {socialMenuOpen === listing.id && (
+                            <div className="absolute bottom-full mb-2 left-0 right-0 bg-gray-800 rounded-lg shadow-xl border border-white/20 p-2 z-50">
+                              <button
+                                onClick={() => shareToSocialMedia(listing, 'facebook')}
+                                className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/10 rounded-lg transition-all text-left"
+                              >
+                                <Facebook className="w-5 h-5 text-blue-500" />
+                                <span>Facebook</span>
+                              </button>
+                              <button
+                                onClick={() => shareToSocialMedia(listing, 'twitter')}
+                                className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/10 rounded-lg transition-all text-left"
+                              >
+                                <Twitter className="w-5 h-5 text-sky-400" />
+                                <span>Twitter/X</span>
+                              </button>
+                              <button
+                                onClick={() => shareToSocialMedia(listing, 'linkedin')}
+                                className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/10 rounded-lg transition-all text-left"
+                              >
+                                <Linkedin className="w-5 h-5 text-blue-600" />
+                                <span>LinkedIn</span>
+                              </button>
+                              <button
+                                onClick={() => shareToSocialMedia(listing, 'instagram')}
+                                className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/10 rounded-lg transition-all text-left"
+                              >
+                                <Instagram className="w-5 h-5 text-pink-500" />
+                                <span>Instagram (Copy Link)</span>
+                              </button>
+                              <button
+                                onClick={() => shareToSocialMedia(listing, 'copy')}
+                                className="w-full flex items-center gap-3 px-4 py-2 hover:bg-white/10 rounded-lg transition-all text-left"
+                              >
+                                <Copy className="w-5 h-5 text-gray-400" />
+                                <span>Copy Link</span>
+                              </button>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     </div>
                   </motion.div>

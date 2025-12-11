@@ -52,8 +52,8 @@ export default function Login() {
       // Call context login with user data
       contextLogin(response.data.user);
 
-      // Redirect
-      navigate(isLogin ? '/dashboard' : '/pricing');
+      // Always redirect to dashboard (no payment required)
+      navigate('/dashboard');
     } catch (err) {
       console.error('Auth error:', err);
       const errorMsg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Authentication failed';

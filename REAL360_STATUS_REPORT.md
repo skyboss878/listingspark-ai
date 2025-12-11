@@ -328,7 +328,7 @@ this is your chance to own paradise! 🌟
 ```
 
 ### URLs:
-- **Frontend:** https://realhub-6.preview.emergentagent.com
+- **Frontend:** https://listing-assist-1.preview.emergentagent.com
 - **Backend API:** http://localhost:8001
 - **API Docs:** http://localhost:8001/docs
 - **Health Check:** http://localhost:8001/health

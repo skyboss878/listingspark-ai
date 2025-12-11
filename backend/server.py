@@ -1079,7 +1079,7 @@ async def get_listing(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     return Listing(**listing)
@@ -1091,14 +1091,14 @@ async def update_listing(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    listing = await (await get_database()).get_collection("listings").find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if not listing:
         raise HTTPException(status_code=404, detail="Listing not found")
     
     updates["updated_at"] = datetime.utcnow()
-    await (await get_database()).get_collection("listings").update_one({"id": listing_id}, {"$set": updates})
+    await db.listings.update_one({"id": listing_id}, {"$set": updates})
     
-    updated = await (await get_database()).get_collection("listings").find_one({"id": listing_id})
+    updated = await db.listings.find_one({"id": listing_id})
     return Listing(**updated)
 
 @app.delete("/api/listings/{listing_id}")
@@ -1107,7 +1107,7 @@ async def delete_listing(
     current_user: User = Depends(get_current_user),
     db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    result = await (await get_database()).get_collection("listings").delete_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    result = await db.listings.delete_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail="Listing not found")
     

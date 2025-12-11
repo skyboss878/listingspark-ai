@@ -13,6 +13,7 @@ import { UserContext } from '../App';
 import axios from '../api';
 import toast from 'react-hot-toast';
 import TrialBanner from './TrialBanner';
+import { Share2, Facebook, Twitter, Instagram, Linkedin, Copy } from 'lucide-react';
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement);
 ChartJS.defaults.color = '#e0e0e0';
@@ -42,6 +43,7 @@ const Dashboard = () => {
   const [activeTab, setActiveTab] = useState('overview');
   const [mlsAccounts, setMLSAccounts] = useState([]);
   const [systemFeatures, setSystemFeatures] = useState({});
+  const [socialMenuOpen, setSocialMenuOpen] = useState(null);
 
   // Fetch all dashboard data from NEW backend
   const fetchDashboardData = useCallback(async () => {

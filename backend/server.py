@@ -1057,7 +1057,7 @@ async def create_listing(
         "updated_at": datetime.utcnow()
     }
     
-    await (await get_database()).get_collection("listings").insert_one(listing_dict)
+    await db.listings.insert_one(listing_dict)
     return Listing(**listing_dict)
 
 @app.get("/api/listings", response_model=List[Listing])

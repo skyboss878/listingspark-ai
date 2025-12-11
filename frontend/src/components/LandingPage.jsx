@@ -32,8 +32,8 @@ const LandingPage = () => {
       localStorage.setItem('token', userData.access_token);
       localStorage.setItem('auth_token', userData.access_token);
       
-      // Store user data
-      login(userData.user.email, formData.password);
+      // Store user data properly
+      login(userData.user);
       
       toast.success('🎉 Account created! Your 3-day free trial has started!');
       setIsSignupOpen(false);
@@ -60,7 +60,8 @@ const LandingPage = () => {
       localStorage.setItem('token', userData.access_token);
       localStorage.setItem('auth_token', userData.access_token);
       
-      login(formData.email, formData.password);
+      // Store user data properly
+      login(userData.user);
       setIsLoginOpen(false);
 
       toast.success('Welcome back!');

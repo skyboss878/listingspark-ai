@@ -1936,6 +1936,145 @@ async def get_shot_guidance(
     
     return guidance
 
+@app.post("/api/360tour/start-room/{listing_id}")
+async def start_room_recording(
+    listing_id: str,
+    room_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Start recording a room with AI guidance"""
+    try:
+        from ai_director import get_ai_director, RoomType
+        
+        listing = await db.listings.find_one({"id": listing_id}, {"_id": 0})
+        if not listing:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        
+        director = get_ai_director()
+        room_type = room_data.get('room_type', 'living_room')
+        
+        guidance = await director.generate_shot_guidance(
+            room_type=RoomType(room_type),
+            property_details=listing,
+            current_position="start"
+        )
+        
+        return {
+            "success": True,
+            "room_type": room_type,
+            "initial_guidance": guidance.get("instruction", "Start by panning slowly from left to right..."),
+            "recommended_duration": guidance.get("duration", 30),
+            "key_features": guidance.get("features_to_highlight", [])
+        }
+    except Exception as e:
+        logger.error(f"Error starting room recording: {e}")
+        return {
+            "success": True,
+            "initial_guidance": "Start by panning slowly from left to right, capturing the entire room. Focus on unique features and natural lighting."
+        }
+
+@app.post("/api/360tour/get-guidance/{listing_id}")
+async def get_real_time_guidance(
+    listing_id: str,
+    guidance_request: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+):
+    """Get real-time AI guidance during recording"""
+    try:
+        from ai_director import get_ai_director
+        
+        room_type = guidance_request.get('room_type', 'living_room')
+        duration = guidance_request.get('duration', 0)
+        
+        # Provide time-based guidance
+        if duration < 10:
+            guidance = "Pan slowly to the right, capturing all wall features..."
+        elif duration < 20:
+            guidance = "Tilt up to show ceiling details and lighting fixtures..."
+        elif duration < 30:
+            guidance = "Pan down to showcase flooring and lower features..."
+        else:
+            guidance = "Almost done! Pan back to center for the final shot..."
+        
+        return {
+            "success": True,
+            "guidance": guidance,
+            "progress": min(100, (duration / 40) * 100)
+        }
+    except Exception as e:
+        return {
+            "success": True,
+            "guidance": "Continue capturing the room details..."
+        }
+
+@app.post("/api/360tour/process/{listing_id}")
+async def process_360_tour(
+    listing_id: str,
+    files: List[UploadFile] = File(...),
+    enable_narration: bool = Form(True),
+    property_type: str = Form("single_family"),
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Process uploaded 360 tour videos and generate final tour with narration"""
+    try:
+        listing = await db.listings.find_one({"id": listing_id}, {"_id": 0})
+        if not listing:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        
+        # Save uploaded videos
+        tour_dir = settings.TOURS_DIR / listing_id
+        tour_dir.mkdir(parents=True, exist_ok=True)
+        
+        room_videos = []
+        for file in files:
+            file_path = tour_dir / file.filename
+            with open(file_path, "wb") as f:
+                content = await file.read()
+                f.write(content)
+            room_videos.append(str(file_path))
+        
+        # Generate narration if enabled
+        narration_file = None
+        if enable_narration:
+            try:
+                from viral_content_engine import generate_tour_narration
+                narration = await generate_tour_narration(listing)
+                narration_file = tour_dir / "narration.txt"
+                with open(narration_file, "w") as f:
+                    f.write(narration)
+            except Exception as e:
+                logger.error(f"Failed to generate narration: {e}")
+        
+        # Update listing with tour info
+        tour_url = f"/tours/{listing_id}/virtual_tour.mp4"
+        await db.listings.update_one(
+            {"id": listing_id},
+            {"$set": {
+                "virtual_tour": {
+                    "url": tour_url,
+                    "created_at": datetime.now(timezone.utc),
+                    "narration_enabled": enable_narration,
+                    "rooms_count": len(room_videos)
+                },
+                "status": "tour_ready",
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+        
+        return {
+            "success": True,
+            "message": "360° tour processed successfully",
+            "tour_url": tour_url,
+            "rooms_recorded": len(room_videos),
+            "narration_enabled": enable_narration
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing 360 tour: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process tour: {str(e)}")
+
 @app.post("/api/director/tour-script")
 async def generate_tour_script(
     listing_id: str,

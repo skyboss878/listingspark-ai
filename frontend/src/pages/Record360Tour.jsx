@@ -62,15 +62,41 @@ const Record360Tour = () => {
     setPermissionState('requesting');
     
     try {
-      // Request permissions - this will trigger browser's permission dialog
-      const mediaStream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width: { ideal: 1920 },
-          height: { ideal: 1080 }
-        },
-        audio: true
-      });
+      // Try with ideal constraints first
+      let mediaStream;
+      
+      try {
+        // First attempt: Try with back camera preference (mobile)
+        mediaStream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 }
+          },
+          audio: true
+        });
+      } catch (firstError) {
+        console.log('First attempt failed, trying simpler constraints...', firstError);
+        
+        // Second attempt: Try with any camera
+        try {
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: {
+              width: { ideal: 1280 },
+              height: { ideal: 720 }
+            },
+            audio: true
+          });
+        } catch (secondError) {
+          console.log('Second attempt failed, trying basic constraints...', secondError);
+          
+          // Third attempt: Most basic request
+          mediaStream = await navigator.mediaDevices.getUserMedia({
+            video: true,
+            audio: true
+          });
+        }
+      }
       
       // Success!
       setStream(mediaStream);
@@ -78,20 +104,35 @@ const Record360Tour = () => {
       
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
+        
+        // Ensure video plays
+        videoRef.current.onloadedmetadata = () => {
+          videoRef.current.play().catch(e => console.log('Video play error:', e));
+        };
       }
       
-      toast.success('Camera access granted! Ready to record.', { duration: 2000 });
+      toast.success('✅ Camera ready! You can now record your tour.', { duration: 3000 });
     } catch (error) {
       console.error('Camera permission error:', error);
       setPermissionState('denied');
       
+      let errorMessage = 'Failed to access camera. ';
+      
       if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
-        toast.error('Camera permission denied. Please enable camera access in your browser settings.', { duration: 5000 });
-      } else if (error.name === 'NotFoundError') {
-        toast.error('No camera found on this device.', { duration: 5000 });
+        errorMessage = '🚫 Camera permission was blocked. Please click the camera icon in your browser address bar and select "Allow", then refresh the page.';
+      } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+        errorMessage = '📷 No camera detected. Please connect a camera and try again.';
+      } else if (error.name === 'NotReadableError' || error.name === 'TrackStartError') {
+        errorMessage = '⚠️ Camera is already in use by another application. Please close other apps using the camera and try again.';
+      } else if (error.name === 'OverconstrainedError') {
+        errorMessage = '⚠️ Camera does not support required settings. Try using a different device.';
+      } else if (error.name === 'SecurityError') {
+        errorMessage = '🔒 Camera access blocked due to security settings. Please ensure you are on a secure (HTTPS) connection.';
       } else {
-        toast.error('Failed to access camera. Please check your browser settings.', { duration: 5000 });
+        errorMessage = `❌ ${error.message || 'Unknown error occurred. Please refresh and try again.'}`;
       }
+      
+      toast.error(errorMessage, { duration: 8000 });
     }
   };
 

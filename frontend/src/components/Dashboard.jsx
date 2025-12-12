@@ -216,12 +216,46 @@ const Dashboard = () => {
       facebook: `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(listingUrl)}`,
       twitter: `https://twitter.com/intent/tweet?url=${encodeURIComponent(listingUrl)}&text=${encodeURIComponent(text)}`,
       linkedin: `https://www.linkedin.com/sharing/share-offsite/?url=${encodeURIComponent(listingUrl)}`,
-      instagram: listingUrl // Instagram doesn't support direct sharing, copy link instead
+      instagram: listingUrl
     };
 
     if (platform === 'instagram' || platform === 'copy') {
-      navigator.clipboard.writeText(listingUrl);
-      toast.success('Link copied to clipboard!');
+      // Fallback for clipboard API
+      try {
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          navigator.clipboard.writeText(listingUrl).then(() => {
+            toast.success('Link copied to clipboard!');
+          }).catch(() => {
+            // Fallback method
+            const textArea = document.createElement('textarea');
+            textArea.value = listingUrl;
+            textArea.style.position = 'fixed';
+            textArea.style.left = '-999999px';
+            document.body.appendChild(textArea);
+            textArea.select();
+            try {
+              document.execCommand('copy');
+              toast.success('Link copied to clipboard!');
+            } catch (err) {
+              toast.error('Could not copy link. Please copy manually: ' + listingUrl);
+            }
+            document.body.removeChild(textArea);
+          });
+        } else {
+          // Old browser fallback
+          const textArea = document.createElement('textarea');
+          textArea.value = listingUrl;
+          textArea.style.position = 'fixed';
+          textArea.style.left = '-999999px';
+          document.body.appendChild(textArea);
+          textArea.select();
+          document.execCommand('copy');
+          document.body.removeChild(textArea);
+          toast.success('Link copied to clipboard!');
+        }
+      } catch (err) {
+        prompt('Copy this link:', listingUrl);
+      }
     } else {
       window.open(urls[platform], '_blank', 'width=600,height=400');
       toast.success(`Opening ${platform}...`);

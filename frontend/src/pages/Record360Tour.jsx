@@ -312,10 +312,24 @@ const Record360Tour = () => {
                   <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
                   Requesting Permission...
                 </span>
+              ) : permissionState === 'denied' ? (
+                '🔄 Try Again After Enabling Permission'
               ) : (
                 '📷 Enable Camera & Microphone'
               )}
             </button>
+            
+            {permissionState === 'denied' && (
+              <button
+                onClick={() => {
+                  setPermissionState('prompt');
+                  setPermissionRequested(false);
+                }}
+                className="w-full bg-yellow-600 px-8 py-4 rounded-lg font-semibold hover:bg-yellow-700 transition-all"
+              >
+                ↩️ Back to Instructions
+              </button>
+            )}
             
             <button
               onClick={() => navigate(`/listing/${listingId}`)}

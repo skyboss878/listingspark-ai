@@ -473,6 +473,22 @@ const Dashboard = () => {
 
                       {/* Action Buttons */}
                       <div className="space-y-2">
+                        {/* View and Edit buttons - always visible */}
+                        <div className="grid grid-cols-2 gap-2 mb-2">
+                          <button
+                            onClick={() => navigate(`/listing/${listing.id}`)}
+                            className="bg-blue-600 px-4 py-2 rounded-lg hover:bg-blue-700 transition-all text-sm"
+                          >
+                            👁️ View Details
+                          </button>
+                          <button
+                            onClick={() => navigate(`/edit-listing/${listing.id}`)}
+                            className="bg-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-700 transition-all text-sm"
+                          >
+                            ✏️ Edit
+                          </button>
+                        </div>
+
                         {listing.status === 'draft' || listing.status === 'images_uploaded' ? (
                           <button
                             onClick={() => completeWorkflow(listing.id)}

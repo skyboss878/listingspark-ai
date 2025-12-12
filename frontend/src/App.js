@@ -20,6 +20,7 @@ import VirtualTourViewer from './components/VirtualTourViewer';
 import TermsAndConditions from './components/TermsAndConditions';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import ProCamera360 from './components/ProCamera360';
+import ViewListing from './pages/ViewListing';
 
 // Create User Context
 export const UserContext = React.createContext();
@@ -181,6 +182,15 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <VirtualTourViewer />
+                </ProtectedRoute>
+              }
+            />
+
+            <Route
+              path="/listing/:listingId"
+              element={
+                <ProtectedRoute>
+                  <ViewListing />
                 </ProtectedRoute>
               }
             />

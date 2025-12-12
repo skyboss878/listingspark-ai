@@ -21,6 +21,7 @@ import TermsAndConditions from './components/TermsAndConditions';
 import PrivacyPolicy from './components/PrivacyPolicy';
 import ProCamera360 from './components/ProCamera360';
 import ViewListing from './pages/ViewListing';
+import EditListing from './pages/EditListing';
 
 // Create User Context
 export const UserContext = React.createContext();
@@ -191,6 +192,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <ViewListing />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/edit-listing/:listingId"
+              element={
+                <ProtectedRoute>
+                  <EditListing />
                 </ProtectedRoute>
               }
             />

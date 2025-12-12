@@ -22,6 +22,7 @@ import PrivacyPolicy from './components/PrivacyPolicy';
 import ProCamera360 from './components/ProCamera360';
 import ViewListing from './pages/ViewListing';
 import EditListing from './pages/EditListing';
+import Record360Tour from './pages/Record360Tour';
 
 // Create User Context
 export const UserContext = React.createContext();
@@ -200,6 +201,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <EditListing />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/record-360/:listingId"
+              element={
+                <ProtectedRoute>
+                  <Record360Tour />
                 </ProtectedRoute>
               }
             />

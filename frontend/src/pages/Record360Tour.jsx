@@ -280,9 +280,24 @@ const Record360Tour = () => {
           {permissionState === 'denied' && (
             <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-6">
               <AlertCircle className="w-6 h-6 mx-auto mb-2 text-red-400" />
-              <p className="text-sm text-red-200">
-                Camera access was denied. Please enable camera permissions in your browser settings and refresh the page.
+              <p className="text-sm font-semibold text-red-200 mb-3">
+                Camera Access Blocked
               </p>
+              <div className="text-left text-xs text-red-100 space-y-2">
+                <p className="font-semibold">How to fix:</p>
+                <ol className="list-decimal list-inside space-y-1 ml-2">
+                  <li>Look for the camera icon 🎥 in your browser's address bar</li>
+                  <li>Click it and select "Always allow" or "Allow"</li>
+                  <li>Refresh this page (F5 or Ctrl+R)</li>
+                  <li>Click "Enable Camera & Microphone" again</li>
+                </ol>
+                <p className="mt-3 text-red-200">
+                  💡 <strong>Still not working?</strong> Make sure:
+                  • Camera is not being used by another app
+                  • You're using Chrome, Firefox, Safari, or Edge
+                  • You have a working camera connected
+                </p>
+              </div>
             </div>
           )}
 

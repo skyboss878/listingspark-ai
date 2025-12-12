@@ -22,8 +22,6 @@ const Record360Tour = () => {
   const [voiceNarration, setVoiceNarration] = useState(true);
   const [tourProgress, setTourProgress] = useState(0);
   const [processing, setProcessing] = useState(false);
-  const [permissionState, setPermissionState] = useState('prompt'); // 'prompt', 'granted', 'denied'
-  const [permissionRequested, setPermissionRequested] = useState(false);
 
   const rooms = [
     { id: 'entrance', name: 'Entrance/Foyer', icon: '🚪' },

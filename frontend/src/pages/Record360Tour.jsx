@@ -22,6 +22,8 @@ const Record360Tour = () => {
   const [voiceNarration, setVoiceNarration] = useState(true);
   const [tourProgress, setTourProgress] = useState(0);
   const [processing, setProcessing] = useState(false);
+  const [permissionState, setPermissionState] = useState('prompt'); // 'prompt', 'granted', 'denied'
+  const [permissionRequested, setPermissionRequested] = useState(false);
 
   const rooms = [
     { id: 'entrance', name: 'Entrance/Foyer', icon: '🚪' },
@@ -34,9 +36,11 @@ const Record360Tour = () => {
     { id: 'garage', name: 'Garage', icon: '🚗' }
   ];
 
+  const [permissionState, setPermissionState] = useState('prompt'); // 'prompt', 'granted', 'denied'
+  const [permissionRequested, setPermissionRequested] = useState(false);
+
   useEffect(() => {
     fetchListing();
-    requestCameraPermissions();
     return () => {
       if (stream) {
         stream.getTracks().forEach(track => track.stop());
@@ -56,21 +60,40 @@ const Record360Tour = () => {
   };
 
   const requestCameraPermissions = async () => {
+    setPermissionRequested(true);
+    setPermissionState('requesting');
+    
     try {
+      // Request permissions - this will trigger browser's permission dialog
       const mediaStream = await navigator.mediaDevices.getUserMedia({
         video: {
-          facingMode: 'environment',
+          facingMode: { ideal: 'environment' },
           width: { ideal: 1920 },
           height: { ideal: 1080 }
         },
         audio: true
       });
+      
+      // Success!
       setStream(mediaStream);
+      setPermissionState('granted');
+      
       if (videoRef.current) {
         videoRef.current.srcObject = mediaStream;
       }
+      
+      toast.success('Camera access granted! Ready to record.', { duration: 2000 });
     } catch (error) {
-      toast.error('Camera access denied. Please enable camera permissions.');
+      console.error('Camera permission error:', error);
+      setPermissionState('denied');
+      
+      if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+        toast.error('Camera permission denied. Please enable camera access in your browser settings.', { duration: 5000 });
+      } else if (error.name === 'NotFoundError') {
+        toast.error('No camera found on this device.', { duration: 5000 });
+      } else {
+        toast.error('Failed to access camera. Please check your browser settings.', { duration: 5000 });
+      }
     }
   };
 
@@ -194,7 +217,80 @@ const Record360Tour = () => {
       <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center text-white">
         <div className="text-center">
           <div className="w-16 h-16 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mb-4 mx-auto"></div>
-          <p className="text-xl">Loading camera...</p>
+          <p className="text-xl">Loading listing...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Show permission request screen
+  if (!permissionRequested || permissionState === 'denied') {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center text-white p-6">
+        <motion.div
+          initial={{ opacity: 0, scale: 0.9 }}
+          animate={{ opacity: 1, scale: 1 }}
+          className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20 max-w-md text-center"
+        >
+          <Camera className="w-20 h-20 mx-auto mb-6 text-purple-400" />
+          <h2 className="text-3xl font-bold mb-4">Camera Access Required</h2>
+          <p className="text-purple-200 mb-6">
+            To record your 360° tour with AI guidance, we need access to your camera and microphone.
+          </p>
+          
+          {permissionState === 'denied' && (
+            <div className="bg-red-500/20 border border-red-500 rounded-lg p-4 mb-6">
+              <AlertCircle className="w-6 h-6 mx-auto mb-2 text-red-400" />
+              <p className="text-sm text-red-200">
+                Camera access was denied. Please enable camera permissions in your browser settings and refresh the page.
+              </p>
+            </div>
+          )}
+
+          <div className="space-y-3 mb-6">
+            <button
+              onClick={requestCameraPermissions}
+              disabled={permissionState === 'requesting'}
+              className="w-full bg-gradient-to-r from-purple-600 to-pink-600 px-8 py-4 rounded-lg font-semibold hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {permissionState === 'requesting' ? (
+                <span className="flex items-center justify-center gap-2">
+                  <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                  Requesting Permission...
+                </span>
+              ) : (
+                '📷 Enable Camera & Microphone'
+              )}
+            </button>
+            
+            <button
+              onClick={() => navigate(`/listing/${listingId}`)}
+              className="w-full bg-gray-600 px-8 py-4 rounded-lg font-semibold hover:bg-gray-700 transition-all"
+            >
+              Cancel
+            </button>
+          </div>
+
+          <div className="text-left bg-purple-600/20 rounded-lg p-4">
+            <p className="text-sm text-purple-200 font-semibold mb-2">Why we need this:</p>
+            <ul className="text-xs text-purple-100 space-y-1">
+              <li>• 📹 Camera: Record 360° property tours</li>
+              <li>• 🎤 Microphone: Capture audio for narration</li>
+              <li>• 🔒 Your privacy is protected - recordings stay on your device until you upload</li>
+            </ul>
+          </div>
+        </motion.div>
+      </div>
+    );
+  }
+
+  // Show loading while camera is initializing
+  if (permissionState === 'requesting' || (permissionState === 'granted' && !stream)) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 flex items-center justify-center text-white">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-purple-400 border-t-transparent rounded-full animate-spin mb-4 mx-auto"></div>
+          <p className="text-xl">Initializing camera...</p>
         </div>
       </div>
     );

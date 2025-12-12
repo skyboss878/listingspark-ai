@@ -337,8 +337,14 @@ metadata:
   run_ui: true
 
 test_plan:
-  current_focus: []  # All high priority tasks completed
-  stuck_tasks: []  # All previously stuck tasks have been resolved
+  current_focus:
+    - "React Runtime Errors Fix"  # CRITICAL - blocks all other features
+    - "View Listing Details"
+    - "Edit Listing" 
+    - "Complete Workflow Feature"
+    - "Social Media Share Feature"
+  stuck_tasks:
+    - "React Runtime Errors Fix"  # Blocking all listing-related features
   test_all: false
   test_priority: "high_first"
   completed_tasks:
@@ -350,6 +356,7 @@ test_plan:
     - "User Registration Flow"
     - "User Login Flow"
     - "Listing Creation"
+    - "Dynamic Property Type Fields in Create Listing"
 
 agent_communication:
   - agent: "main"

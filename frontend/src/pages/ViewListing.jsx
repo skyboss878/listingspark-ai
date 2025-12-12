@@ -54,6 +54,12 @@ const ViewListing = () => {
           </button>
           <div className="flex gap-2">
             <button
+              onClick={() => navigate(`/record-360/${listing.id}`)}
+              className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-2 rounded-lg hover:shadow-lg transition-all"
+            >
+              🎥 Record 360° Tour
+            </button>
+            <button
               onClick={() => navigate(`/edit-listing/${listing.id}`)}
               className="bg-indigo-600 px-6 py-2 rounded-lg hover:bg-indigo-700 transition-all"
             >

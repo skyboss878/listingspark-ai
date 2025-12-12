@@ -489,6 +489,14 @@ const Dashboard = () => {
                           </button>
                         </div>
 
+                        {/* Record 360 Tour Button */}
+                        <button
+                          onClick={() => navigate(`/record-360/${listing.id}`)}
+                          className="w-full bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 rounded-lg hover:shadow-lg transition-all text-sm mb-2"
+                        >
+                          🎥 Record AI-Guided 360° Tour
+                        </button>
+
                         {listing.status === 'draft' || listing.status === 'images_uploaded' ? (
                           <button
                             onClick={() => completeWorkflow(listing.id)}

@@ -44,6 +44,30 @@ const Dashboard = () => {
   const [mlsAccounts, setMLSAccounts] = useState([]);
   const [systemFeatures, setSystemFeatures] = useState({});
   const [socialMenuOpen, setSocialMenuOpen] = useState(null);
+  const [cameraPermissionAsked, setCameraPermissionAsked] = useState(false);
+
+  // Request camera permission during onboarding
+  const requestCameraPermissionOnboarding = async () => {
+    try {
+      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+        return;
+      }
+
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true
+      });
+
+      stream.getTracks().forEach(track => track.stop());
+      localStorage.setItem('camera_permission_asked', 'true');
+      setCameraPermissionAsked(true);
+      toast.success('📹 Camera ready! You can now record 360° tours.', { duration: 3000 });
+    } catch (error) {
+      localStorage.setItem('camera_permission_asked', 'true');
+      setCameraPermissionAsked(true);
+      console.log('Camera permission:', error.name);
+    }
+  };
 
   // Fetch all dashboard data from NEW backend
   const fetchDashboardData = useCallback(async () => {
@@ -94,6 +118,14 @@ const Dashboard = () => {
 
   useEffect(() => {
     fetchDashboardData();
+    
+    // Request camera permission on first dashboard visit (after 2 seconds)
+    const hasAskedPermission = localStorage.getItem('camera_permission_asked');
+    if (!hasAskedPermission && !cameraPermissionAsked) {
+      setTimeout(() => {
+        requestCameraPermissionOnboarding();
+      }, 2000);
+    }
   }, [fetchDashboardData]);
 
   // Generate AI content for listing

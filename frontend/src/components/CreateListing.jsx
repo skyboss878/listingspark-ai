@@ -125,11 +125,36 @@ const CreateListing = () => {
     }
   };
 
-  const commonFeatures = [
+  const residentialFeatures = [
     'Pool', 'Garage', 'Fireplace', 'Updated Kitchen', 'Hardwood Floors',
     'Central AC', 'Walk-in Closet', 'Patio', 'Balcony', 'Garden',
     'Smart Home', 'Solar Panels', 'Security System', 'Gym', 'Home Office'
   ];
+
+  const commercialFeatures = [
+    'High-Speed Internet', 'Conference Rooms', 'Elevator', 'Loading Dock',
+    'Security System', '24/7 Access', 'Parking Lot', 'Break Room',
+    'Reception Area', 'Server Room', 'Handicap Accessible', 'HVAC System',
+    'Fire Suppression', 'Backup Generator', 'Storage Space'
+  ];
+
+  const landFeatures = [
+    'Water Access', 'Electricity Available', 'Gas Line', 'Sewer Connection',
+    'Well on Property', 'Septic System', 'Road Access', 'Fenced',
+    'Wooded', 'Cleared', 'Gated', 'Creek/Stream', 'Mountain View',
+    'Lake View', 'Agricultural Use'
+  ];
+
+  // Get features based on property type
+  const getFeaturesByType = () => {
+    if (formData.property_type === 'commercial') {
+      return commercialFeatures;
+    } else if (formData.property_type === 'land') {
+      return landFeatures;
+    } else {
+      return residentialFeatures;
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
@@ -503,12 +528,19 @@ const CreateListing = () => {
 
           {step === 3 && (
             <div className="space-y-6">
-              <h2 className="text-2xl font-bold mb-6">Features & Images</h2>
+              <h2 className="text-2xl font-bold mb-6">
+                {formData.property_type === 'commercial' ? 'Commercial Features & Amenities' :
+                 formData.property_type === 'land' ? 'Land Features & Utilities' :
+                 'Residential Features & Amenities'}
+              </h2>
               
               <div>
-                <label className="block mb-3 text-sm font-medium">Property Features</label>
+                <label className="block mb-3 text-sm font-medium">
+                  Select {formData.property_type === 'commercial' ? 'Commercial' :
+                          formData.property_type === 'land' ? 'Land' : 'Property'} Features
+                </label>
                 <div className="flex flex-wrap gap-2 mb-4">
-                  {commonFeatures.map((feature) => (
+                  {getFeaturesByType().map((feature) => (
                     <button
                       key={feature}
                       type="button"

@@ -43,25 +43,25 @@ const ViewListing = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-purple-900 via-blue-900 to-indigo-900 text-white">
-      <div className="container mx-auto px-6 py-8">
+      <div className="container mx-auto px-6 py-8 max-w-6xl">
         {/* Header */}
-        <div className="flex justify-between items-center mb-8">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-8">
           <button
             onClick={() => navigate('/dashboard')}
-            className="text-white hover:text-purple-300 transition-colors"
+            className="text-white hover:text-purple-300 transition-colors font-medium"
           >
             ← Back to Dashboard
           </button>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
             <button
               onClick={() => navigate(`/record-360/${listing.id}`)}
-              className="bg-gradient-to-r from-purple-600 to-pink-600 px-6 py-2 rounded-lg hover:shadow-lg transition-all"
+              className="bg-gradient-to-r from-purple-600 to-pink-600 px-4 py-2 rounded-lg hover:shadow-lg transition-all text-sm font-medium"
             >
               🎥 Record 360° Tour
             </button>
             <button
               onClick={() => navigate(`/edit-listing/${listing.id}`)}
-              className="bg-indigo-600 px-6 py-2 rounded-lg hover:bg-indigo-700 transition-all"
+              className="bg-indigo-600 px-4 py-2 rounded-lg hover:bg-indigo-700 transition-all text-sm font-medium"
             >
               ✏️ Edit Listing
             </button>
@@ -72,17 +72,17 @@ const ViewListing = () => {
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          className="bg-white/10 backdrop-blur-sm rounded-xl p-8 border border-white/20"
+          className="bg-white/10 backdrop-blur-lg rounded-xl p-6 md:p-8 border border-white/20 shadow-2xl"
         >
           {/* Main Info */}
           <div className="mb-8">
-            <h1 className="text-4xl font-bold mb-2">{listing.address}</h1>
-            <p className="text-2xl text-purple-200 mb-4">{listing.city}, {listing.state} {listing.zip_code}</p>
-            <p className="text-5xl font-bold text-green-400">${listing.price?.toLocaleString()}</p>
+            <h1 className="text-3xl md:text-4xl font-bold mb-2 text-white">{listing.address}</h1>
+            <p className="text-xl md:text-2xl text-purple-200 mb-4">{listing.city}, {listing.state} {listing.zip_code}</p>
+            <p className="text-4xl md:text-5xl font-bold text-green-400">${listing.price?.toLocaleString()}</p>
           </div>
 
           {/* Property Details */}
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 mb-8">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 md:gap-6 mb-8">
             {listing.bedrooms && (
               <div className="bg-purple-600/20 rounded-lg p-4">
                 <p className="text-purple-300 text-sm mb-1">Bedrooms</p>

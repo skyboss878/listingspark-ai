@@ -1848,27 +1848,6 @@ async def complete_listing_workflow(
         "steps": ["AI Content Generation", "Image Enhancement" if has_images else "Skipping Images", "Finalizing"],
         "estimated_time": "2-3 minutes"
     }
-            
-            logger.info(f"Workflow completed for listing {listing_id}")
-            
-        except Exception as e:
-            logger.error(f"Workflow error for listing {listing_id}: {e}")
-            await db.listings.update_one(
-                {"id": listing_id},
-                {"$set": {"status": ListingStatus.DRAFT, "updated_at": datetime.utcnow()}}
-            )
-    
-    background_tasks.add_task(complete_workflow)
-    
-    return {
-        "success": True,
-        "message": "Complete workflow started",
-        "listing_id": listing_id,
-        "steps": [
-            "Generating AI content",
-            "Enhancing images",
-            "Creating 360° virtual tour with voice narration",
-            "Preparing for MLS publication"
         ]
     }
 

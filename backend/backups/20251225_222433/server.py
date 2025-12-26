@@ -1,0 +1,2738 @@
+"""
+from sqlite_auth import SQLiteAuth
+ListingSpark AI - Complete Server with 360° Tours, AI Content, MLS Integration
+Integrates ALL existing features: Video tours, AI enhancement, Voice narration, MLS publishing
+"""
+
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, BackgroundTasks
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import JSONResponse, FileResponse
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from sqlite_auth import SQLiteAuth
+from contextlib import asynccontextmanager
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
+from datetime import datetime, timedelta
+from typing import Optional, List, Dict, Any
+import logging
+from pathlib import Path
+import os
+import json
+import uuid
+from jose import JWTError, jwt
+from passlib.context import CryptContext
+from pydantic import BaseModel, EmailStr, Field
+from enum import Enum
+from elevenlabs_voice import elevenlabs_engine
+import httpx
+import sqlite3
+import shutil
+import asyncio
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
+
+# Import your existing modules
+try:
+    from video_tour_generator_pro import VideoTourGenerator
+    VIDEO_TOURS_AVAILABLE = True
+except ImportError:
+    VIDEO_TOURS_AVAILABLE = False
+    print("⚠️  Video tour generator not found - feature disabled")
+
+try:
+    from ai_image_enhancer import AIImageEnhancer
+    IMAGE_ENHANCEMENT_AVAILABLE = True
+except ImportError:
+    IMAGE_ENHANCEMENT_AVAILABLE = False
+    print("⚠️  AI image enhancer not found - feature disabled")
+
+try:
+    from elevenlabs_voice import ElevenLabsVoice
+    VOICE_NARRATION_AVAILABLE = True
+except ImportError:
+    VOICE_NARRATION_AVAILABLE = False
+    print("⚠️  ElevenLabs voice not found - feature disabled")
+
+try:
+    from platform_integrations import PlatformIntegrations
+    PLATFORM_INTEGRATIONS_AVAILABLE = True
+except ImportError:
+    PLATFORM_INTEGRATIONS_AVAILABLE = False
+    print("⚠️  Platform integrations not found - feature disabled")
+
+# ==================== CONFIGURATION ====================
+
+from db_adapter import init_database, get_database, close_database
+
+class Settings:
+    APP_NAME = "ListingSpark AI"
+    VERSION = "2.0.0"
+        # Database
+    MONGODB_URL = os.getenv("MONGODB_URL", "mongodb://localhost:27017")
+    MONGODB_NAME = os.getenv("MONGODB_NAME", "listingspark")
+    SQLITE_DB = os.getenv("SQLITE_DB", "listingspark.db")
+    
+    # Auth
+    SECRET_KEY = os.getenv("SECRET_KEY", "your-secret-key-change-in-production")
+    ALGORITHM = "HS256"
+    ACCESS_TOKEN_EXPIRE_MINUTES = 1440
+    
+    # API Keys
+    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+    ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+    ELEVENLABS_API_KEY = os.getenv("ELEVENLABS_API_KEY")
+    
+    # MLS Providers
+    CRMLS_CLIENT_ID = os.getenv("CRMLS_CLIENT_ID")
+    CRMLS_CLIENT_SECRET = os.getenv("CRMLS_CLIENT_SECRET")
+    BRIGHT_MLS_CLIENT_ID = os.getenv("BRIGHT_MLS_CLIENT_ID")
+    BRIGHT_MLS_CLIENT_SECRET = os.getenv("BRIGHT_MLS_CLIENT_SECRET")
+    
+    # Directories
+    UPLOAD_DIR = Path("uploads")
+    TOURS_DIR = Path("video_tours")
+    MUSIC_DIR = Path("music_library")
+    TEMP_DIR = Path("temp")
+    
+    # Video Tour Settings
+    VIDEO_QUALITY = os.getenv("VIDEO_QUALITY", "high")  # low, medium, high, ultra
+    VIDEO_FPS = int(os.getenv("VIDEO_FPS", "30"))
+    VIDEO_RESOLUTION = os.getenv("VIDEO_RESOLUTION", "1920x1080")
+    ENABLE_360_CAMERA = os.getenv("ENABLE_360_CAMERA", "true").lower() == "true"
+    CAMERA_MOVEMENT_SPEED = float(os.getenv("CAMERA_MOVEMENT_SPEED", "1.5"))
+    
+    # AI Content Settings
+    AI_MODEL = os.getenv("AI_MODEL", "gpt-4")
+    AI_TEMPERATURE = float(os.getenv("AI_TEMPERATURE", "0.7"))
+    
+    # Voice Narration
+    VOICE_MODEL = os.getenv("VOICE_MODEL", "eleven_monolingual_v1")
+    VOICE_ID = os.getenv("VOICE_ID", "EXAVITQu4vr4xnSDxMaL")  # Default professional voice
+    DEBUG = os.getenv("DEBUG", "false").lower() == "true"
+
+# CORS Origins
+CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://10.123.181.88:3000",
+    "http://192.168.1.22:3000",
+    "http://192.168.1.85:3000"
+]
+
+
+# Create FastAPI app instance
+app = FastAPI(title="ListingSpark AI", version="2.0.0")
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+settings = Settings()
+
+# Create directories
+for directory in [settings.UPLOAD_DIR, settings.TOURS_DIR, settings.MUSIC_DIR, settings.TEMP_DIR, Path("logs")]:
+    directory.mkdir(exist_ok=True)
+
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO if settings.DEBUG else logging.WARNING,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.FileHandler('logs/server.log'),
+        logging.StreamHandler()
+    ]
+)
+logger = logging.getLogger(__name__)
+
+# ==================== DATABASE ====================
+
+class Database:
+    sqlite_auth = None
+    mongo_client: Optional[AsyncIOMotorClient] = None
+    mongo_db: Optional[AsyncIOMotorDatabase] = None
+    sqlite_conn: Optional[sqlite3.Connection] = None
+    
+    @classmethod
+    async def connect_mongodb(cls):
+        try:
+            cls.mongo_client = AsyncIOMotorClient(settings.MONGODB_URL)
+            cls.mongo_db = cls.mongo_client[settings.MONGODB_NAME]
+            await cls.mongo_db.command('ping')
+            logger.info(f"✅ Connected to MongoDB: {settings.MONGODB_NAME}")
+            
+            # Create indexes
+            await cls.mongo_db.users.create_index("email", unique=True)
+            await cls.mongo_db.users.create_index("id", unique=True)
+            await cls.mongo_db.listings.create_index("user_id")
+            await cls.mongo_db.listings.create_index([("user_id", 1), ("status", 1)])
+            await cls.mongo_db.mls_accounts.create_index("user_id")
+            
+        except Exception as e:
+            logger.warning(f"⚠️ MongoDB not available: {e}")
+            logger.info("Running without MLS integration features")
+    
+    @classmethod
+    def connect_sqlite(cls):
+        try:
+            cls.sqlite_conn = sqlite3.connect(settings.SQLITE_DB, check_same_thread=False)
+            cls.sqlite_conn.row_factory = sqlite3.Row
+            logger.info(f"✅ Connected to SQLite: {settings.SQLITE_DB}")
+        except Exception as e:
+            logger.error(f"❌ SQLite connection failed: {e}")
+    
+    @classmethod
+    async def close_mongodb(cls):
+        if cls.mongo_client:
+            cls.mongo_client.close()
+            logger.info("❌ Closed MongoDB connection")
+    
+    @classmethod
+    def close_sqlite(cls):
+        if cls.sqlite_conn:
+            cls.sqlite_conn.close()
+            logger.info("❌ Closed SQLite connection")
+
+async def get_mongo_db() -> AsyncIOMotorDatabase:
+    if Database.mongo_db is None:
+        raise HTTPException(status_code=503, detail="Database not available")
+    return Database.mongo_db
+
+# ==================== ENUMS ====================
+
+class UserRole(str, Enum):
+    AGENT = "agent"
+    ADMIN = "admin"
+    BROKER = "broker"
+
+class PropertyType(str, Enum):
+    SINGLE_FAMILY = "single_family"
+    CONDO = "condo"
+    TOWNHOUSE = "townhouse"
+    MULTI_FAMILY = "multi_family"
+    LAND = "land"
+    COMMERCIAL = "commercial"
+
+class ListingStatus(str, Enum):
+    DRAFT = "draft"
+    IMAGES_UPLOADED = "images_uploaded"
+    AI_ENHANCED = "ai_enhanced"
+    TOUR_GENERATING = "tour_generating"
+    TOUR_GENERATED = "tour_generated"
+    READY_TO_PUBLISH = "ready_to_publish"
+    PUBLISHED = "published"
+    SYNDICATED = "syndicated"
+    SOLD = "sold"
+    INACTIVE = "inactive"
+
+class MLSProvider(str, Enum):
+    CRMLS = "crmls"
+    BRIGHT_MLS = "bright_mls"
+    RETS_RABBIT = "rets_rabbit"
+    STELLAR_MLS = "stellar_mls"
+    DEMO = "demo"
+
+class TourStyle(str, Enum):
+    CINEMATIC = "cinematic"
+    WALKTHROUGH = "walkthrough"
+    DRONE = "drone"
+    LUXURY = "luxury"
+    MODERN = "modern"
+    CLASSIC = "classic"
+
+class VoiceStyle(str, Enum):
+    PROFESSIONAL = "professional"
+    FRIENDLY = "friendly"
+    LUXURY = "luxury"
+    ENERGETIC = "energetic"
+
+# ==================== AUTHENTICATION ====================
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+security = HTTPBearer()
+
+class AuthService:
+    @staticmethod
+    def verify_password(plain_password: str, hashed_password: str) -> bool:
+        return pwd_context.verify(plain_password, hashed_password)
+    
+    @staticmethod
+    def get_password_hash(password: str) -> str:
+        return pwd_context.hash(password)
+    
+    @staticmethod
+    def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
+        to_encode = data.copy()
+        if expires_delta:
+            expire = datetime.utcnow() + expires_delta
+        else:
+            expire = datetime.utcnow() + timedelta(minutes=settings.ACCESS_TOKEN_EXPIRE_MINUTES)
+        to_encode.update({"exp": expire})
+        return jwt.encode(to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM)
+
+async def get_current_user(
+    credentials: HTTPAuthorizationCredentials = Depends(security)
+) -> dict:
+    credentials_exception = HTTPException(
+        status_code=401,
+        detail="Could not validate credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
+
+    try:
+        token = credentials.credentials
+        payload = jwt.decode(token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+        user_id: str = payload.get("sub")
+        if user_id is None:
+            raise credentials_exception
+    except JWTError:
+        raise credentials_exception
+
+    if Database.sqlite_auth is None:
+        raise credentials_exception
+    
+    user_data = await Database.sqlite_auth.get_user_by_id(user_id)
+    if user_data is None:
+        raise credentials_exception
+
+    return user_data
+
+
+# ==================== MODELS ====================
+
+# User Models
+class UserCreate(BaseModel):
+    email: EmailStr
+    password: str
+    full_name: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    role: UserRole = UserRole.AGENT
+
+class UserLogin(BaseModel):
+    email: EmailStr
+    password: str
+
+class User(BaseModel):
+    id: str
+    email: EmailStr
+    full_name: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    role: UserRole
+    is_active: bool = True
+    created_at: Optional[datetime] = None
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str = "bearer"
+    user: User
+
+# Listing Models
+class AIContent(BaseModel):
+    description: Optional[str] = None
+    headline: Optional[str] = None
+    social_captions: Dict[str, str] = {}
+    email_template: Optional[str] = None
+    highlights: List[str] = []
+    generated_at: Optional[datetime] = None
+
+class VirtualTour(BaseModel):
+    video_url: Optional[str] = None
+    thumbnail_url: Optional[str] = None
+    duration: Optional[int] = None
+    style: Optional[TourStyle] = TourStyle.CINEMATIC
+    music_track: Optional[str] = None
+    narration_url: Optional[str] = None
+    narration_text: Optional[str] = None
+    voice_style: Optional[VoiceStyle] = VoiceStyle.PROFESSIONAL
+    has_360_camera: bool = False
+    camera_movements: List[str] = []
+    transition_effects: List[str] = []
+    created_at: Optional[datetime] = None
+    processing_status: str = "pending"  # pending, processing, completed, failed
+
+class SyndicationStatus(BaseModel):
+    zillow: str = "pending"
+    realtor_com: str = "pending"
+    trulia: str = "pending"
+    homes_com: str = "pending"
+    last_synced: Optional[datetime] = None
+
+class ListingCreate(BaseModel):
+    property_type: PropertyType
+    address: str
+    city: str
+    state: str
+    zip_code: str
+    price: float
+    bedrooms: Optional[int] = None
+    bathrooms: Optional[float] = None
+    square_feet: int
+    lot_size: Optional[float] = None
+    year_built: Optional[int] = None
+    description: Optional[str] = None
+    features: List[str] = []
+    images: List[str] = []
+    # Commercial specific
+    office_spaces: Optional[int] = None
+    parking_spaces: Optional[int] = None
+    loading_docks: Optional[int] = None
+    # Land specific
+    zoning: Optional[str] = None
+    topography: Optional[str] = None
+    utilities: Optional[str] = None
+    # Custom fields
+    custom_fields: Optional[Dict[str, str]] = {}
+
+class Listing(ListingCreate):
+    id: str
+    user_id: str
+    status: ListingStatus = ListingStatus.DRAFT
+    ai_content: Optional[AIContent] = None
+    virtual_tour: Optional[VirtualTour] = None
+    enhanced_images: List[str] = []
+    mls_listing_id: Optional[str] = None
+    mls_number: Optional[str] = None
+    mls_provider: Optional[str] = None
+    published_at: Optional[datetime] = None
+    syndication: SyndicationStatus = Field(default_factory=SyndicationStatus)
+    created_at: datetime
+    updated_at: datetime
+
+# MLS Models
+class MLSAccountCreate(BaseModel):
+    provider: MLSProvider
+    account_name: str
+    client_id: str
+    client_secret: str
+    api_endpoint: Optional[str] = None
+    description: Optional[str] = None
+
+class MLSAccount(BaseModel):
+    id: str
+    user_id: str
+    provider: MLSProvider
+    account_name: str
+    is_active: bool = True
+    is_connected: bool = False
+    last_sync: Optional[datetime] = None
+    created_at: datetime
+
+class PublishRequest(BaseModel):
+    listing_id: str
+    mls_account_id: str
+
+# Tour Generation Models
+class TourGenerationRequest(BaseModel):
+    listing_id: str
+    style: TourStyle = TourStyle.CINEMATIC
+    voice_style: VoiceStyle = VoiceStyle.PROFESSIONAL
+    music_track: Optional[str] = None
+    enable_360_camera: bool = True
+    enable_narration: bool = True
+    duration_seconds: Optional[int] = 60
+
+# AI Content Generation Models
+class AIContentRequest(BaseModel):
+    listing_id: str
+    include_social_media: bool = True
+    include_email_template: bool = True
+    tone: str = "professional"  # professional, casual, luxury
+
+# Image Enhancement Models
+class ImageEnhancementRequest(BaseModel):
+    listing_id: str
+    enhance_all: bool = True
+    image_urls: Optional[List[str]] = None
+
+"""
+Complete server.py - Part 2: MLS Integration & Background Services
+Append this after Part 1
+"""
+
+# ==================== MLS INTEGRATION ====================
+
+class MLSIntegration:
+    def __init__(self, mls_account: Dict[str, Any]):
+        self.mls_account = mls_account
+        self.provider = mls_account['provider']
+        self.client = httpx.AsyncClient(timeout=30.0)
+        self.access_token = None
+    
+    def _get_endpoint(self) -> str:
+        endpoints = {
+            "crmls": "https://api.crmls.org/RESO/OData",
+            "bright_mls": "https://api.brightmls.com/RESO/OData",
+            "demo": "https://demo.reso.org/api"
+        }
+        return self.mls_account.get('api_endpoint') or endpoints.get(self.provider, "")
+    
+    async def authenticate(self) -> bool:
+        if self.provider == "demo":
+            logger.info("Demo mode: Simulating authentication")
+            return True
+        
+        try:
+            token_url = f"{self._get_endpoint().rsplit('/RESO', 1)[0]}/oauth/token"
+            response = await self.client.post(
+                token_url,
+                data={
+                    'grant_type': 'client_credentials',
+                    'client_id': self.mls_account['client_id'],
+                    'client_secret': self.mls_account['client_secret']
+                }
+            )
+            
+            if response.status_code == 200:
+                self.access_token = response.json().get('access_token')
+                return True
+            return False
+        except Exception as e:
+            logger.error(f"Auth error: {e}")
+            return self.provider == "demo"
+    
+    async def test_connection(self) -> Dict[str, Any]:
+        if self.provider == "demo":
+            return {
+                'connected': True,
+                'provider': self.provider,
+                'message': 'Demo mode - Connection simulated'
+            }
+        
+        try:
+            headers = {'Authorization': f'Bearer {self.access_token}'} if self.access_token else {}
+            response = await self.client.get(f"{self._get_endpoint()}/$metadata", headers=headers)
+            
+            return {
+                'connected': response.status_code == 200,
+                'provider': self.provider,
+                'message': 'Connected' if response.status_code == 200 else 'Connection failed'
+            }
+        except Exception as e:
+            return {
+                'connected': False,
+                'provider': self.provider,
+                'message': f'Error: {str(e)}'
+            }
+    
+    async def publish_listing(self, listing: Dict[str, Any]) -> Dict[str, Any]:
+        if self.provider == "demo":
+            mls_id = f"MLS{str(uuid.uuid4())[:8].upper()}"
+            return {
+                'success': True,
+                'mls_listing_id': mls_id,
+                'mls_number': mls_id,
+                'message': 'Successfully published (Demo Mode)',
+                'syndication_status': {
+                    'zillow': 'syndicating',
+                    'realtor_com': 'syndicating',
+                    'trulia': 'syndicating'
+                }
+            }
+        
+        try:
+            reso_data = {
+                'ListPrice': listing['price'],
+                'UnparsedAddress': listing['address'],
+                'City': listing['city'],
+                'StateOrProvince': listing['state'],
+                'PostalCode': listing['zip_code'],
+                'BedroomsTotal': listing['bedrooms'],
+                'BathroomsTotalInteger': int(listing['bathrooms']),
+                'LivingArea': listing['square_feet'],
+                'PropertyType': listing['property_type'],
+                'PublicRemarks': listing.get('description', ''),
+                'StandardStatus': 'Active'
+            }
+            
+            headers = {
+                'Authorization': f'Bearer {self.access_token}',
+                'Content-Type': 'application/json'
+            }
+            
+            response = await self.client.post(
+                f"{self._get_endpoint()}/Property",
+                json=reso_data,
+                headers=headers
+            )
+            
+            if response.status_code in [200, 201]:
+                result = response.json()
+                return {
+                    'success': True,
+                    'mls_listing_id': result.get('ListingId'),
+                    'mls_number': result.get('ListingKey'),
+                    'message': 'Successfully published to MLS',
+                    'syndication_status': {
+                        'zillow': 'syndicating',
+                        'realtor_com': 'syndicating',
+                        'trulia': 'syndicating'
+                    }
+                }
+            else:
+                return {
+                    'success': False,
+                    'message': f'Failed to publish: {response.status_code}'
+                }
+        except Exception as e:
+            logger.error(f"Publish error: {e}")
+            return {'success': False, 'message': f'Error: {str(e)}'}
+    
+    async def close(self):
+        await self.client.aclose()
+
+# ==================== AI CONTENT GENERATION SERVICE ====================
+
+class AIContentService:
+    """Service for generating AI-powered marketing content"""
+    
+    @staticmethod
+    async def generate_listing_content(listing: Dict[str, Any], tone: str = "professional") -> Dict[str, Any]:
+        """Generate comprehensive AI content for a listing"""
+        
+        try:
+            if settings.OPENAI_API_KEY:
+                from openai import AsyncOpenAI
+                client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+                
+                prompt = f"""Create compelling real estate marketing content for this property:
+                
+Property Details:
+- Type: {listing['property_type']}
+- Address: {listing['address']}, {listing['city']}, {listing['state']}
+- Price: ${listing['price']:,.0f}
+- Bedrooms: {listing['bedrooms']}, Bathrooms: {listing['bathrooms']}
+- Square Feet: {listing['square_feet']:,}
+- Features: {', '.join(listing.get('features', []))}
+
+Please provide:
+1. A captivating property description (200-300 words, {tone} tone)
+2. An attention-grabbing headline
+3. 5 key highlight points
+4. Social media captions for Facebook, Instagram, and Twitter
+5. An email template for potential buyers
+
+Format as JSON."""
+
+                response = await client.chat.completions.create(
+                    model=settings.AI_MODEL,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=settings.AI_TEMPERATURE
+                )
+                
+                content = response.choices[0].message.content
+                # Parse AI response and structure it
+                
+            # Fallback content if AI not available
+            return {
+                "description": f"Stunning {listing['bedrooms']} bedroom, {listing['bathrooms']} bathroom {listing['property_type'].replace('_', ' ')} in {listing['city']}. This {listing['square_feet']:,} sq ft home offers modern living at its finest. Features include {', '.join(listing.get('features', [])[:3])}. Priced at ${listing['price']:,.0f}.",
+                "headline": f"Your Dream Home Awaits in {listing['city']}!",
+                "social_captions": {
+                    "facebook": f"🏡 New Listing Alert! {listing['bedrooms']}BR/{listing['bathrooms']}BA in {listing['city']} - ${listing['price']:,.0f}. {listing.get('features', [''])[0] if listing.get('features') else 'Beautiful property'}!",
+                    "instagram": f"✨ Just Listed ✨\n{listing['bedrooms']}BR | {listing['bathrooms']}BA | {listing['square_feet']:,} sq ft\n📍 {listing['city']}, {listing['state']}\n💰 ${listing['price']:,.0f}\n#JustListed #RealEstate #{listing['city']}Homes",
+                    "twitter": f"🏠 NEW LISTING: {listing['bedrooms']}BR/{listing['bathrooms']}BA in {listing['city']}\n💵 ${listing['price']:,.0f}\n📏 {listing['square_feet']:,} sq ft\nDM for details! #RealEstate"
+                },
+                "email_template": f"""Subject: New Listing: {listing['address']}
+
+Dear [Buyer Name],
+
+I'm excited to share this exceptional property with you:
+
+{listing['address']}
+{listing['city']}, {listing['state']} {listing['zip_code']}
+
+Property Highlights:
+- {listing['bedrooms']} Bedrooms, {listing['bathrooms']} Bathrooms
+- {listing['square_feet']:,} Square Feet
+- Priced at ${listing['price']:,.0f}
+
+This home features {', '.join(listing.get('features', ['beautiful finishes and modern amenities'])[:3])}.
+
+Would you like to schedule a private showing?
+
+Best regards,
+[Your Name]""",
+                "highlights": [
+                    f"{listing['bedrooms']} spacious bedrooms",
+                    f"{listing['bathrooms']} modern bathrooms",
+                    f"{listing['square_feet']:,} sq ft of living space",
+                    f"Prime location in {listing['city']}",
+                    f"Priced to sell at ${listing['price']:,.0f}"
+                ],
+                "generated_at": datetime.utcnow()
+            }
+            
+        except Exception as e:
+            logger.error(f"AI content generation error: {e}")
+            raise HTTPException(status_code=500, detail="Failed to generate AI content")
+
+# ==================== VIDEO TOUR GENERATION SERVICE ====================
+
+class TourGenerationService:
+    """Service for generating 360° virtual tours"""
+    
+    @staticmethod
+    async def generate_tour(
+        listing: Dict[str, Any],
+        style: TourStyle,
+        voice_style: VoiceStyle,
+        enable_360: bool = True,
+        enable_narration: bool = True,
+        music_track: Optional[str] = None
+    ) -> Dict[str, Any]:
+        """Generate a complete virtual tour with 360° camera, music, and narration"""
+        
+        try:
+            listing_id = listing['id']
+            output_dir = settings.TOURS_DIR / listing_id
+            output_dir.mkdir(exist_ok=True, parents=True)
+            
+            # Generate narration script
+            narration_script = TourGenerationService._generate_narration_script(listing, voice_style)
+            
+            # Generate voice narration if ElevenLabs available
+            narration_file = None
+            if enable_narration and VOICE_NARRATION_AVAILABLE and settings.ELEVENLABS_API_KEY:
+                try:
+                    voice_gen = ElevenLabsVoice(settings.ELEVENLABS_API_KEY)
+                    narration_file = await voice_gen.generate_narration(
+                        text=narration_script,
+                        voice_id=settings.VOICE_ID,
+                        output_path=str(output_dir / "narration.mp3")
+                    )
+                except Exception as e:
+                    logger.error(f"Voice narration failed: {e}")
+            
+            # Generate video tour if module available
+            video_file = None
+            if VIDEO_TOURS_AVAILABLE:
+                try:
+                    tour_gen = VideoTourGenerator(
+                        images=listing.get('images', []),
+                        output_dir=str(output_dir),
+                        style=style.value,
+                        enable_360=enable_360,
+                        camera_speed=settings.CAMERA_MOVEMENT_SPEED,
+                        fps=settings.VIDEO_FPS,
+                        resolution=settings.VIDEO_RESOLUTION
+                    )
+                    
+                    video_file = await tour_gen.generate(
+                        music_track=music_track,
+                        narration_file=narration_file
+                    )
+                except Exception as e:
+                    logger.error(f"Video tour generation failed: {e}")
+                    raise HTTPException(status_code=500, detail="Failed to generate video tour")
+            
+            # Generate thumbnail
+            thumbnail_file = str(output_dir / "thumbnail.jpg")
+            if listing.get('images'):
+                shutil.copy(listing['images'][0], thumbnail_file)
+            
+            return {
+                "video_url": f"/tours/{listing_id}/tour.mp4" if video_file else None,
+                "thumbnail_url": f"/tours/{listing_id}/thumbnail.jpg",
+                "duration": 120,  # Calculate actual duration
+                "style": style.value,
+                "music_track": music_track or "cinematic_ambient.mp3",
+                "narration_url": f"/tours/{listing_id}/narration.mp3" if narration_file else None,
+                "narration_text": narration_script,
+                "voice_style": voice_style.value,
+                "has_360_camera": enable_360,
+                "camera_movements": ["pan", "zoom", "dolly"] if enable_360 else [],
+                "transition_effects": ["fade", "crossfade", "wipe"],
+                "created_at": datetime.utcnow(),
+                "processing_status": "completed"
+            }
+            
+        except Exception as e:
+            logger.error(f"Tour generation error: {e}")
+            return {
+                "processing_status": "failed",
+                "error": str(e)
+            }
+    
+    @staticmethod
+    def _generate_narration_script(listing: Dict[str, Any], voice_style: VoiceStyle) -> str:
+        """Generate narration script based on listing details"""
+        
+        style_intros = {
+            "professional": "Welcome to this exceptional property located at",
+            "friendly": "Hey there! Let me show you around this amazing home at",
+            "luxury": "Presenting an extraordinary residence at",
+            "energetic": "Get ready to fall in love with this incredible home at"
+        }
+        
+        intro = style_intros.get(voice_style.value, style_intros["professional"])
+        
+        script = f"""{intro} {listing['address']}.
+
+This stunning {listing['bedrooms']} bedroom, {listing['bathrooms']} bathroom {listing['property_type'].replace('_', ' ')} offers {listing['square_feet']:,} square feet of luxurious living space.
+
+"""
+        
+        if listing.get('features'):
+            script += f"Key features include {', '.join(listing['features'][:4])}.\n\n"
+        
+        script += f"""Located in the heart of {listing['city']}, this property is priced at ${listing['price']:,.0f}.
+
+Don't miss this opportunity to own your dream home. Schedule a showing today!"""
+        
+        return script
+
+"""
+Complete server.py - Part 3: Image Enhancement, Routes & FastAPI App
+Append this after Part 2
+"""
+
+# ==================== IMAGE ENHANCEMENT SERVICE ====================
+
+class ImageEnhancementService:
+    """Service for AI-powered image enhancement"""
+    
+    @staticmethod
+    async def enhance_images(listing: Dict[str, Any], image_urls: Optional[List[str]] = None) -> List[str]:
+        """Enhance property images using AI"""
+        
+        try:
+            images_to_enhance = image_urls or listing.get('images', [])
+            enhanced_urls = []
+            
+            if IMAGE_ENHANCEMENT_AVAILABLE and images_to_enhance:
+                enhancer = AIImageEnhancer(api_key=settings.OPENAI_API_KEY)
+                
+                for img_url in images_to_enhance:
+                    try:
+                        # Download image
+                        img_path = settings.UPLOAD_DIR / Path(img_url).name
+                        
+                        # Enhance image
+                        enhanced_path = await enhancer.enhance(
+                            input_path=str(img_path),
+                            output_dir=str(settings.UPLOAD_DIR / "enhanced"),
+                            enhance_lighting=True,
+                            enhance_colors=True,
+                            remove_clutter=True
+                        )
+                        
+                        enhanced_urls.append(f"/uploads/enhanced/{Path(enhanced_path).name}")
+                    except Exception as e:
+                        logger.error(f"Failed to enhance image {img_url}: {e}")
+                        enhanced_urls.append(img_url)  # Keep original on failure
+            else:
+                enhanced_urls = images_to_enhance
+            
+            return enhanced_urls
+            
+        except Exception as e:
+            logger.error(f"Image enhancement error: {e}")
+            return listing.get('images', [])
+
+# ==================== FASTAPI APP ====================
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    logger.info(f"🚀 Starting {settings.APP_NAME} v{settings.VERSION}")
+    logger.info(f"📹 360° Camera: {'✅ Enabled' if settings.ENABLE_360_CAMERA else '❌ Disabled'}")
+    logger.info(f"🎥 Video Tours: {'✅ Available' if VIDEO_TOURS_AVAILABLE else '❌ Not Available'}")
+    logger.info(f"🎙️  Voice Narration: {'✅ Available' if VOICE_NARRATION_AVAILABLE else '❌ Not Available'}")
+    logger.info(f"🖼️  Image Enhancement: {'✅ Available' if IMAGE_ENHANCEMENT_AVAILABLE else '❌ Not Available'}")
+    
+    await Database.connect_mongodb()
+    Database.connect_sqlite()
+    
+    # Initialize SQLite Auth
+    Database.sqlite_auth = SQLiteAuth()
+    await Database.sqlite_auth.init_db()
+    logger.info("✅ SQLite Auth initialized")
+    logger.info("✅ All systems ready!")
+    
+    yield
+    
+    # Shutdown
+    logger.info("🛑 Shutting down...")
+    await Database.close_mongodb()
+    Database.close_sqlite()
+
+app = FastAPI(
+    title=settings.APP_NAME,
+    version=settings.VERSION,
+    description="AI-Powered Real Estate Platform with 360° Tours, MLS Integration & Portal Syndication",
+    lifespan=lifespan
+)
+
+# CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Static files
+app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
+app.mount("/tours", StaticFiles(directory=settings.TOURS_DIR), name="tours")
+app.mount("/music", StaticFiles(directory=settings.MUSIC_DIR), name="music")
+
+# ==================== ROOT ROUTES ====================
+
+@app.get("/")
+async def root():
+    return {
+        "app": settings.APP_NAME,
+        "version": settings.VERSION,
+        "status": "running",
+        "features": {
+            "ai_content_generation": True,
+            "360_virtual_tours": VIDEO_TOURS_AVAILABLE,
+            "voice_narration": VOICE_NARRATION_AVAILABLE,
+            "image_enhancement": IMAGE_ENHANCEMENT_AVAILABLE,
+            "mls_integration": True,
+            "portal_syndication": PLATFORM_INTEGRATIONS_AVAILABLE,
+            "360_camera_enabled": settings.ENABLE_360_CAMERA
+        },
+        "capabilities": {
+            "tour_styles": [style.value for style in TourStyle],
+            "voice_styles": [style.value for style in VoiceStyle],
+            "video_quality": settings.VIDEO_QUALITY,
+            "video_resolution": settings.VIDEO_RESOLUTION,
+            "video_fps": settings.VIDEO_FPS
+        }
+    }
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "mongodb": Database.mongo_db is not None,
+        "sqlite": Database.sqlite_conn is not None,
+        "services": {
+            "video_tours": VIDEO_TOURS_AVAILABLE,
+            "voice_narration": VOICE_NARRATION_AVAILABLE,
+            "image_enhancement": IMAGE_ENHANCEMENT_AVAILABLE,
+            "platform_integrations": PLATFORM_INTEGRATIONS_AVAILABLE
+        }
+    }
+
+# ==================== AUTH ROUTES ====================
+
+@app.post("/api/auth/register", response_model=Token)
+async def register(user_data: UserCreate):
+    """Register a new user with SQLite and start 3-day free trial"""
+    if Database.sqlite_auth is None:
+        raise HTTPException(status_code=503, detail="Auth system not initialized")
+
+    user, error = await Database.sqlite_auth.create_user(
+        email=user_data.email,
+        password=user_data.password,
+        full_name=user_data.full_name,
+        company=user_data.company,
+        phone=user_data.phone,
+        role=user_data.role
+    )
+
+    if error:
+        raise HTTPException(status_code=400, detail=error)
+
+    # Start 3-day free trial automatically
+    try:
+        from trial_system import start_free_trial
+        trial_info = start_free_trial(user["id"])
+        user["trial_info"] = trial_info
+    except Exception as e:
+        print(f"Warning: Could not start trial: {e}")
+
+    access_token = AuthService.create_access_token(data={"sub": user["id"]})
+    user_obj = User(**user)
+    return Token(access_token=access_token, user=user_obj)
+
+
+@app.post("/api/auth/login", response_model=Token)
+async def login(login_data: UserLogin):
+    """Login with email and password using SQLite"""
+    if Database.sqlite_auth is None:
+        raise HTTPException(status_code=503, detail="Auth system not initialized")
+
+    user, error = await Database.sqlite_auth.authenticate_user(
+        email=login_data.email,
+        password=login_data.password
+    )
+
+    if error:
+        raise HTTPException(status_code=401, detail=error)
+
+    access_token = AuthService.create_access_token(data={"sub": user["id"]})
+    user_obj = User(**user)
+    return Token(access_token=access_token, user=user_obj)
+
+
+
+# ==================== TRIAL & SUBSCRIPTION ROUTES ====================
+
+from trial_system import (
+    init_trial_system,
+    check_trial_status,
+    get_trial_info,
+    activate_subscription,
+    cancel_subscription
+)
+
+# Initialize trial system
+try:
+    init_trial_system()
+except Exception as e:
+    print(f"⚠️ Trial system initialization: {e}")
+
+@app.get("/api/auth/trial-status")
+async def get_trial_status(current_user: User = Depends(get_current_user)):
+    """Get current user's trial status"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        status = check_trial_status(user_id)
+        return status
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to check trial: {str(e)}")
+
+@app.get("/api/auth/trial-info")
+async def get_user_trial_info(current_user: User = Depends(get_current_user)):
+    """Get detailed trial information for dashboard"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        info = get_trial_info(user_id)
+        return info
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get trial info: {str(e)}")
+
+@app.post("/api/subscription/activate")
+async def activate_user_subscription(
+    subscription_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Activate subscription after PayPal payment"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        result = activate_subscription(user_id, subscription_id)
+        return result
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to activate subscription: {str(e)}")
+
+@app.post("/api/subscription/cancel")
+async def cancel_user_subscription(current_user: User = Depends(get_current_user)):
+    """Cancel user's subscription"""
+    user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+    try:
+        success = cancel_subscription(user_id)
+        return {"success": success, "message": "Subscription cancelled"}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to cancel subscription: {str(e)}")
+
+    access_token = AuthService.create_access_token(data={"sub": user["id"]})
+    user_obj = User(**user)
+    return Token(access_token=access_token, user=user_obj)
+
+
+@app.get("/api/auth/me", response_model=User)
+async def get_me(current_user: User = Depends(get_current_user)):
+    return current_user
+
+# ==================== LISTING ROUTES ====================
+
+@app.post("/api/listings", response_model=Listing)
+async def create_listing(
+    listing_data: ListingCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing_dict = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id,
+        **listing_data.dict(),
+        "status": ListingStatus.DRAFT,
+        "ai_content": None,
+        "virtual_tour": None,
+        "enhanced_images": [],
+        "mls_listing_id": None,
+        "mls_number": None,
+        "mls_provider": None,
+        "published_at": None,
+        "syndication": {"zillow": "pending", "realtor_com": "pending", "trulia": "pending", "homes_com": "pending"},
+        "created_at": datetime.utcnow(),
+        "updated_at": datetime.utcnow()
+    }
+    
+    await db.listings.insert_one(listing_dict)
+    return Listing(**listing_dict)
+
+@app.get("/api/listings", response_model=List[Listing])
+async def get_listings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    status: Optional[ListingStatus] = None
+):
+    query = {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}
+    if status:
+        query["status"] = status
+    
+    listings = await db.listings.find(query).sort("created_at", -1).to_list(100)
+    return [Listing(**listing) for listing in listings]
+
+@app.get("/api/listings/{listing_id}", response_model=Listing)
+async def get_listing(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    return Listing(**listing)
+
+@app.put("/api/listings/{listing_id}", response_model=Listing)
+async def update_listing(
+    listing_id: str,
+    updates: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    updates["updated_at"] = datetime.utcnow()
+    await db.listings.update_one({"id": listing_id}, {"$set": updates})
+    
+    updated = await db.listings.find_one({"id": listing_id})
+    return Listing(**updated)
+
+@app.delete("/api/listings/{listing_id}")
+async def delete_listing(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    result = await db.listings.delete_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Cleanup files
+    tour_dir = settings.TOURS_DIR / listing_id
+    if tour_dir.exists():
+        shutil.rmtree(tour_dir)
+    
+    return {"message": "Listing deleted successfully"}
+
+# ==================== FILE UPLOAD ROUTES ====================
+
+@app.post("/api/upload/images")
+async def upload_images(
+    files: List[UploadFile] = File(...),
+    listing_id: Optional[str] = Form(None),
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    uploaded_files = []
+    
+    for file in files:
+        file_ext = file.filename.split('.')[-1]
+        unique_filename = f"{uuid.uuid4()}.{file_ext}"
+        file_path = settings.UPLOAD_DIR / unique_filename
+        
+        with open(file_path, "wb") as f:
+            content = await file.read()
+            f.write(content)
+        
+        uploaded_files.append({
+            "filename": file.filename,
+            "url": f"/uploads/{unique_filename}",
+            "size": len(content)
+        })
+    
+    # Update listing if listing_id provided
+    if listing_id:
+        image_urls = [f["url"] for f in uploaded_files]
+        await db.listings.update_one(
+            {"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id},
+            {
+                "$push": {"images": {"$each": image_urls}},
+                "$set": {"status": ListingStatus.IMAGES_UPLOADED, "updated_at": datetime.utcnow()}
+            }
+        )
+    
+    return {"success": True, "files": uploaded_files}
+
+# ==================== AI CONTENT GENERATION ROUTES ====================
+
+@app.post("/api/content/generate/{listing_id}")
+async def generate_ai_content(
+    listing_id: str,
+    request: AIContentRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Generate AI content
+    ai_content = await AIContentService.generate_listing_content(listing, request.tone)
+    
+    # Update listing
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {
+            "ai_content": ai_content,
+            "status": ListingStatus.AI_ENHANCED,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return {"success": True, "ai_content": ai_content}
+
+@app.get("/api/content/{listing_id}")
+async def get_ai_content(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    ai_content = listing.get("ai_content")
+    if not ai_content:
+        raise HTTPException(status_code=404, detail="AI content not generated yet")
+    
+    return ai_content
+
+# ==================== IMAGE ENHANCEMENT ROUTES ====================
+
+@app.post("/api/images/enhance/{listing_id}")
+async def enhance_listing_images(
+    listing_id: str,
+    request: ImageEnhancementRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Enhance images
+    enhanced_urls = await ImageEnhancementService.enhance_images(
+        listing,
+        image_urls=request.image_urls if not request.enhance_all else None
+    )
+    
+    # Update listing
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {
+            "enhanced_images": enhanced_urls,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return {"success": True, "enhanced_images": enhanced_urls}
+
+# ==================== VIRTUAL TOUR ROUTES ====================
+
+@app.post("/api/tours/generate/{listing_id}")
+async def generate_virtual_tour(
+    listing_id: str,
+    request: TourGenerationRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    if not listing.get('images'):
+        raise HTTPException(status_code=400, detail="Please upload images first")
+    
+    # Update status to generating
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {"status": ListingStatus.TOUR_GENERATING}}
+    )
+    
+    # Generate tour in background
+    async def generate_tour_task():
+        tour_data = await TourGenerationService.generate_tour(
+            listing=listing,
+            style=request.style,
+            voice_style=request.voice_style,
+            enable_360=request.enable_360_camera,
+            enable_narration=request.enable_narration,
+            music_track=request.music_track
+        )
+        
+        await db.listings.update_one(
+            {"id": listing_id},
+            {"$set": {
+                "virtual_tour": tour_data,
+                "status": ListingStatus.TOUR_GENERATED,
+                "updated_at": datetime.utcnow()
+            }}
+        )
+    
+    background_tasks.add_task(generate_tour_task)
+    
+    return {
+        "success": True,
+        "message": "Tour generation started",
+        "listing_id": listing_id,
+        "status": "processing"
+    }
+
+@app.get("/api/tours/{listing_id}")
+async def get_virtual_tour(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    tour = listing.get("virtual_tour")
+    if not tour:
+        raise HTTPException(status_code=404, detail="Virtual tour not found")
+    
+    return tour
+
+@app.get("/api/tours/{listing_id}/status")
+async def get_tour_status(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    tour = listing.get("virtual_tour", {})
+    return {
+        "status": tour.get("processing_status", "not_started"),
+        "has_tour": tour.get("video_url") is not None
+    }
+
+"""
+Complete server.py - Part 4: MLS Routes, Dashboard & Final (COMPLETE)
+Append this after Part 3 to complete server.py
+"""
+
+# ==================== MLS ROUTES ====================
+
+@app.post("/api/mls/accounts", response_model=MLSAccount)
+async def create_mls_account(
+    account_data: MLSAccountCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    account_dict = {
+        "id": str(uuid.uuid4()),
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id,
+        **account_data.dict(),
+        "is_active": True,
+        "is_connected": False,
+        "last_sync": None,
+        "created_at": datetime.utcnow()
+    }
+    
+    # Test connection
+    mls = MLSIntegration(account_dict)
+    auth_success = await mls.authenticate()
+    if auth_success:
+        test = await mls.test_connection()
+        account_dict["is_connected"] = test.get('connected', False)
+    await mls.close()
+    
+    await db.mls_accounts.insert_one(account_dict)
+    return MLSAccount(**{k: v for k, v in account_dict.items() if k not in ['client_id', 'client_secret']})
+
+@app.get("/api/mls/accounts", response_model=List[MLSAccount])
+async def get_mls_accounts(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    accounts = await db.mls_accounts.find({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}).to_list(100)
+    return [MLSAccount(**{k: v for k, v in acc.items() if k not in ['client_id', 'client_secret']}) for acc in accounts]
+
+@app.get("/api/mls/accounts/{account_id}", response_model=MLSAccount)
+async def get_mls_account(
+    account_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    account = await db.mls_accounts.find_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not account:
+        raise HTTPException(status_code=404, detail="MLS account not found")
+    return MLSAccount(**{k: v for k, v in account.items() if k not in ['client_id', 'client_secret']})
+
+@app.post("/api/mls/test/{account_id}")
+async def test_mls_connection(
+    account_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    account = await db.mls_accounts.find_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not account:
+        raise HTTPException(status_code=404, detail="MLS account not found")
+    
+    mls = MLSIntegration(account)
+    auth_success = await mls.authenticate()
+    if not auth_success:
+        await mls.close()
+        return {"connected": False, "message": "Authentication failed"}
+    
+    result = await mls.test_connection()
+    await mls.close()
+    
+    await db.mls_accounts.update_one(
+        {"id": account_id},
+        {"$set": {
+            "is_connected": result.get('connected', False),
+            "last_sync": datetime.utcnow()
+        }}
+    )
+    
+    return result
+
+@app.delete("/api/mls/accounts/{account_id}")
+async def delete_mls_account(
+    account_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    result = await db.mls_accounts.delete_one({"id": account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if result.deleted_count == 0:
+        raise HTTPException(status_code=404, detail="MLS account not found")
+    return {"message": "MLS account deleted successfully"}
+
+@app.post("/api/mls/publish")
+async def publish_to_mls(
+    publish_data: PublishRequest,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    # Get listing
+    listing = await db.listings.find_one({"id": publish_data.listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Verify listing is ready to publish
+    if not listing.get('ai_content') or not listing.get('virtual_tour'):
+        raise HTTPException(
+            status_code=400,
+            detail="Please generate AI content and virtual tour before publishing"
+        )
+    
+    # Get MLS account
+    mls_account = await db.mls_accounts.find_one({"id": publish_data.mls_account_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not mls_account:
+        raise HTTPException(status_code=404, detail="MLS account not found")
+    
+    if not mls_account.get('is_connected'):
+        raise HTTPException(status_code=400, detail="MLS account is not connected")
+    
+    # Publish to MLS
+    mls = MLSIntegration(mls_account)
+    await mls.authenticate()
+    result = await mls.publish_listing(listing)
+    await mls.close()
+    
+    if result['success']:
+        # Update listing
+        await db.listings.update_one(
+            {"id": publish_data.listing_id},
+            {"$set": {
+                "status": ListingStatus.PUBLISHED,
+                "mls_listing_id": result.get('mls_listing_id'),
+                "mls_number": result.get('mls_number'),
+                "mls_provider": mls_account['provider'],
+                "published_at": datetime.utcnow(),
+                "syndication": result.get('syndication_status', {}),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+        
+        # Trigger platform syndication in background if available
+        if PLATFORM_INTEGRATIONS_AVAILABLE:
+            async def syndicate_task():
+                try:
+                    integrations = PlatformIntegrations()
+                    await integrations.syndicate_listing(listing, result.get('mls_listing_id'))
+                except Exception as e:
+                    logger.error(f"Syndication error: {e}")
+            
+            background_tasks.add_task(syndicate_task)
+    
+    return result
+
+@app.get("/api/mls/syndication/{listing_id}")
+async def get_syndication_status(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    if listing.get('status') not in [ListingStatus.PUBLISHED, ListingStatus.SYNDICATED]:
+        raise HTTPException(status_code=400, detail="Listing is not published")
+    
+    return {
+        "listing_id": listing_id,
+        "mls_number": listing.get('mls_number'),
+        "mls_provider": listing.get('mls_provider'),
+        "syndication": listing.get('syndication', {}),
+        "published_at": listing.get('published_at')
+    }
+
+# ==================== PLATFORM SYNDICATION ROUTES ====================
+
+@app.post("/api/platforms/publish/{listing_id}")
+async def publish_to_platforms(
+    listing_id: str,
+    platforms: Optional[List[str]] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    background_tasks: BackgroundTasks = None
+):
+    """Publish listing to multiple platforms (Zillow, Realtor.com, Facebook, Trulia)"""
+    from platform_integrations_v2 import get_platform_manager, ListingData, PlatformType
+    
+    listing = await db.listings.find_one({
+        "id": listing_id,
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
+    })
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Convert to ListingData format
+    listing_data = ListingData(
+        id=listing["id"],
+        address=listing["address"],
+        city=listing["city"],
+        state=listing["state"],
+        zip_code=listing["zip_code"],
+        price=listing["price"],
+        bedrooms=listing["bedrooms"],
+        bathrooms=listing["bathrooms"],
+        square_feet=listing.get("square_feet", 0),
+        property_type=listing.get("property_type", "single_family"),
+        description=listing.get("description", ""),
+        features=listing.get("features", []),
+        photos=listing.get("images", []),
+        tour_360_url=listing.get("virtual_tour", {}).get("video_url"),
+        video_url=listing.get("video_url"),
+        contact_name=listing.get("agent_name", current_user.get("full_name", "")),
+        contact_email=listing.get("agent_email", current_user.get("email", "")),
+        contact_phone=listing.get("agent_phone", ""),
+        year_built=listing.get("year_built"),
+        lot_size=listing.get("lot_size")
+    )
+    
+    # Get platform manager
+    manager = await get_platform_manager()
+    
+    # Convert platform names to enum
+    platform_types = None
+    if platforms:
+        platform_types = [PlatformType(p) for p in platforms]
+    
+    # Publish to platforms
+    results = await manager.publish_to_platforms(listing_data, platform_types)
+    
+    # Update listing with platform IDs
+    platform_data = {}
+    for result in results:
+        platform_data[result.platform.value] = {
+            "status": result.status.value,
+            "platform_id": result.platform_listing_id,
+            "platform_url": result.platform_url,
+            "synced_at": result.synced_at.isoformat(),
+            "error": result.error_message
+        }
+    
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {
+            "platform_syndication": platform_data,
+            "updated_at": datetime.utcnow()
+        }}
+    )
+    
+    return {
+        "listing_id": listing_id,
+        "results": [r.dict() for r in results]
+    }
+
+@app.get("/api/platforms/status/{listing_id}")
+async def get_platform_status(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Get platform syndication status"""
+    listing = await db.listings.find_one({
+        "id": listing_id,
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
+    })
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    return {
+        "listing_id": listing_id,
+        "platforms": listing.get("platform_syndication", {}),
+        "mls_syndication": listing.get("syndication", {})
+    }
+
+@app.get("/api/platforms/available")
+async def get_available_platforms():
+    """Get list of available platforms"""
+    from platform_integrations_v2 import get_platform_manager
+    
+    manager = await get_platform_manager()
+    platforms = list(manager.integrations.keys())
+    
+    return {
+        "available_platforms": [p.value for p in platforms],
+        "count": len(platforms)
+    }
+
+# ==================== DASHBOARD & ANALYTICS ROUTES ====================
+
+@app.get("/api/dashboard/stats")
+async def get_dashboard_stats(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    # Get listing counts by status
+    pipeline = [
+        {"$match": {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}},
+        {"$group": {
+            "_id": "$status",
+            "count": {"$sum": 1}
+        }}
+    ]
+    
+    status_counts = {}
+    async for doc in db.listings.aggregate(pipeline):
+        status_counts[doc["_id"]] = doc["count"]
+    
+    # Get totals
+    total_listings = await db.listings.count_documents({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    published = await db.listings.count_documents({
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id,
+        "status": {"$in": [ListingStatus.PUBLISHED, ListingStatus.SYNDICATED]}
+    })
+    mls_accounts = await db.mls_accounts.count_documents({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    
+    # Get recent activity
+    recent_listings = await db.listings.find(
+        {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}
+    ).sort("created_at", -1).limit(5).to_list(5)
+    
+    return {
+        "total_listings": total_listings,
+        "published_listings": published,
+        "draft_listings": status_counts.get(ListingStatus.DRAFT, 0),
+        "ai_enhanced": status_counts.get(ListingStatus.AI_ENHANCED, 0),
+        "tour_generated": status_counts.get(ListingStatus.TOUR_GENERATED, 0),
+        "ready_to_publish": status_counts.get(ListingStatus.READY_TO_PUBLISH, 0),
+        "mls_accounts": mls_accounts,
+        "status_breakdown": status_counts,
+        "recent_listings": [
+            {
+                "id": listing["id"],
+                "address": listing["address"],
+                "price": listing["price"],
+                "status": listing["status"],
+                "created_at": listing["created_at"]
+            }
+            for listing in recent_listings
+        ]
+    }
+
+@app.get("/api/dashboard/activity")
+async def get_recent_activity(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    limit: int = 20
+):
+    """Get recent activity timeline"""
+    listings = await db.listings.find(
+        {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}
+    ).sort("updated_at", -1).limit(limit).to_list(limit)
+    
+    activity = []
+    for listing in listings:
+        activity.append({
+            "type": "listing_updated",
+            "listing_id": listing["id"],
+            "address": listing["address"],
+            "status": listing["status"],
+            "timestamp": listing["updated_at"]
+        })
+    
+    return {"activity": activity}
+
+# ==================== SYSTEM INFO ROUTES ====================
+
+@app.get("/api/system/features")
+async def get_system_features():
+    """Get available system features and capabilities"""
+    return {
+        "ai_content": {
+            "available": bool(settings.OPENAI_API_KEY or settings.ANTHROPIC_API_KEY),
+            "model": settings.AI_MODEL,
+            "temperature": settings.AI_TEMPERATURE
+        },
+        "video_tours": {
+            "available": VIDEO_TOURS_AVAILABLE,
+            "quality": settings.VIDEO_QUALITY,
+            "resolution": settings.VIDEO_RESOLUTION,
+            "fps": settings.VIDEO_FPS,
+            "360_camera": settings.ENABLE_360_CAMERA,
+            "camera_speed": settings.CAMERA_MOVEMENT_SPEED
+        },
+        "voice_narration": {
+            "available": VOICE_NARRATION_AVAILABLE,
+            "model": settings.VOICE_MODEL,
+            "voice_id": settings.VOICE_ID
+        },
+        "image_enhancement": {
+            "available": IMAGE_ENHANCEMENT_AVAILABLE
+        },
+        "mls_integration": {
+            "available": True,
+            "providers": [p.value for p in MLSProvider]
+        },
+        "platform_syndication": {
+            "available": PLATFORM_INTEGRATIONS_AVAILABLE,
+            "portals": ["zillow", "realtor_com", "trulia", "homes_com"]
+        }
+    }
+
+@app.get("/api/system/tour-styles")
+async def get_tour_styles():
+    """Get available tour styles and voice options"""
+    return {
+        "tour_styles": [
+            {
+                "id": style.value,
+                "name": style.value.replace("_", " ").title(),
+                "description": f"{style.value.title()} style virtual tour"
+            }
+            for style in TourStyle
+        ],
+        "voice_styles": [
+            {
+                "id": style.value,
+                "name": style.value.title(),
+                "description": f"{style.value.title()} narration style"
+            }
+            for style in VoiceStyle
+        ],
+        "music_tracks": [
+            "cinematic_ambient.mp3",
+            "upbeat_modern.mp3",
+            "luxury_elegant.mp3",
+            "soft_piano.mp3",
+            "dramatic_orchestral.mp3"
+        ]
+    }
+
+# ==================== MUSIC LIBRARY ROUTES ====================
+
+@app.get("/api/music/tracks")
+async def get_music_tracks():
+    """Get available music tracks for video tours"""
+    music_files = []
+    if settings.MUSIC_DIR.exists():
+        for file in settings.MUSIC_DIR.glob("*.mp3"):
+            music_files.append({
+                "filename": file.name,
+                "url": f"/music/{file.name}",
+                "size": file.stat().st_size
+            })
+    return {"tracks": music_files}
+
+# ==================== WORKFLOW ROUTES ====================
+
+@app.post("/api/workflow/complete/{listing_id}")
+async def complete_listing_workflow(
+    listing_id: str,
+    background_tasks: BackgroundTasks,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """
+    Complete entire listing workflow:
+    1. Generate AI content
+    2. Enhance images (if available)
+    3. Generate virtual tour description
+    4. Mark as ready to publish
+    """
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}, {"_id": 0})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Don't require images - workflow can work with descriptions only
+    has_images = listing.get('images') and len(listing.get('images', [])) > 0
+    
+    async def complete_workflow():
+        try:
+            # Step 1: Generate AI content
+            logger.info(f"Generating AI content for listing {listing_id}")
+            from ai_content_service import AIContentService
+            ai_content = await AIContentService.generate_listing_content(listing, "professional")
+            await db.listings.update_one(
+                {"id": listing_id},
+                {"$set": {"ai_content": ai_content, "updated_at": datetime.now(timezone.utc)}}
+            )
+            
+            # Step 2: Enhance images if available
+            if has_images:
+                logger.info(f"Enhancing images for listing {listing_id}")
+                try:
+                    from image_enhancement import ImageEnhancementService
+                    enhanced_urls = await ImageEnhancementService.enhance_images(listing)
+                    await db.listings.update_one(
+                        {"id": listing_id},
+                        {"$set": {"enhanced_images": enhanced_urls, "updated_at": datetime.now(timezone.utc)}}
+                    )
+                except Exception as e:
+                    logger.error(f"Image enhancement failed: {e}")
+            
+            # Step 3: Mark as ready to publish
+            await db.listings.update_one(
+                {"id": listing_id},
+                {"$set": {
+                    "status": "ready_to_publish",
+                    "updated_at": datetime.now(timezone.utc)
+                }}
+            )
+            
+            logger.info(f"Workflow completed for listing {listing_id}")
+        except Exception as e:
+            logger.error(f"Workflow error for {listing_id}: {e}")
+            await db.listings.update_one(
+                {"id": listing_id},
+                {"$set": {"status": "draft", "updated_at": datetime.now(timezone.utc)}}
+            )
+    
+    background_tasks.add_task(complete_workflow)
+    
+    return {
+        "message": "Workflow started",
+        "status": "processing",
+        "steps": ["AI Content Generation", "Image Enhancement" if has_images else "Skipping Images", "Finalizing"],
+        "estimated_time": "2-3 minutes"
+    }
+
+@app.get("/api/workflow/status/{listing_id}")
+async def get_workflow_status(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Get current workflow status for a listing"""
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    return {
+        "listing_id": listing_id,
+        "status": listing.get("status"),
+        "steps_completed": {
+            "images_uploaded": bool(listing.get("images")),
+            "ai_content_generated": bool(listing.get("ai_content")),
+            "images_enhanced": bool(listing.get("enhanced_images")),
+            "virtual_tour_created": bool(listing.get("virtual_tour")),
+            "ready_to_publish": listing.get("status") == ListingStatus.READY_TO_PUBLISH
+        },
+        "next_step": _get_next_workflow_step(listing)
+    }
+
+def _get_next_workflow_step(listing: Dict[str, Any]) -> str:
+    """Determine next step in listing workflow"""
+    if not listing.get("images"):
+        return "Upload property images"
+    elif not listing.get("ai_content"):
+        return "Generate AI content"
+    elif not listing.get("enhanced_images"):
+        return "Enhance images"
+    elif not listing.get("virtual_tour"):
+        return "Generate 360° virtual tour"
+    elif listing.get("status") != ListingStatus.READY_TO_PUBLISH:
+        return "Complete workflow"
+    else:
+        return "Publish to MLS"
+
+# ==================== REAL360 AI DIRECTOR & VIRAL ENGINE ROUTES ====================
+
+@app.post("/api/director/shot-guidance")
+async def get_shot_guidance(
+    room_type: str,
+    listing_id: str,
+    current_position: Optional[str] = None,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Get real-time AI director guidance for current shot"""
+    from ai_director import get_ai_director, RoomType
+    
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    director = get_ai_director()
+    guidance = await director.generate_shot_guidance(
+        RoomType(room_type),
+        listing,
+        current_position or "entrance"
+    )
+    
+    return guidance
+
+@app.post("/api/360tour/start-room/{listing_id}")
+async def start_room_recording(
+    listing_id: str,
+    room_data: Dict[str, Any],
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Start recording a room with AI guidance"""
+    try:
+        from ai_director import get_ai_director, RoomType
+        
+        listing = await db.listings.find_one({"id": listing_id}, {"_id": 0})
+        if not listing:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        
+        director = get_ai_director()
+        room_type = room_data.get('room_type', 'living_room')
+        
+        guidance = await director.generate_shot_guidance(
+            room_type=RoomType(room_type),
+            property_details=listing,
+            current_position="start"
+        )
+        
+        return {
+            "success": True,
+            "room_type": room_type,
+            "initial_guidance": guidance.get("instruction", "Start by panning slowly from left to right..."),
+            "recommended_duration": guidance.get("duration", 30),
+            "key_features": guidance.get("features_to_highlight", [])
+        }
+    except Exception as e:
+        logger.error(f"Error starting room recording: {e}")
+        return {
+            "success": True,
+            "initial_guidance": "Start by panning slowly from left to right, capturing the entire room. Focus on unique features and natural lighting."
+        }
+
+@app.post("/api/360tour/get-guidance/{listing_id}")
+async def get_real_time_guidance(
+    listing_id: str,
+    guidance_request: Dict[str, Any],
+    current_user: User = Depends(get_current_user)
+):
+    """Get real-time AI guidance during recording"""
+    try:
+        from ai_director import get_ai_director
+        
+        room_type = guidance_request.get('room_type', 'living_room')
+        duration = guidance_request.get('duration', 0)
+        
+        # Provide time-based guidance
+        if duration < 10:
+            guidance = "Pan slowly to the right, capturing all wall features..."
+        elif duration < 20:
+            guidance = "Tilt up to show ceiling details and lighting fixtures..."
+        elif duration < 30:
+            guidance = "Pan down to showcase flooring and lower features..."
+        else:
+            guidance = "Almost done! Pan back to center for the final shot..."
+        
+        return {
+            "success": True,
+            "guidance": guidance,
+            "progress": min(100, (duration / 40) * 100)
+        }
+    except Exception as e:
+        return {
+            "success": True,
+            "guidance": "Continue capturing the room details..."
+        }
+
+@app.post("/api/360tour/process/{listing_id}")
+async def process_360_tour(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    enable_narration: bool = True,
+    property_type: str = "single_family"
+):
+    """Process uploaded 360 tour videos and generate final tour with narration"""
+    try:
+        listing = await db.listings.find_one({"id": listing_id}, {"_id": 0})
+        if not listing:
+            raise HTTPException(status_code=404, detail="Listing not found")
+        
+        # For now, just mark as tour created since we don't have actual video files
+        # In production, you would process actual uploaded videos here
+        tour_url = f"/tours/{listing_id}/virtual_tour.mp4"
+        
+        # Generate narration text if enabled
+        narration_text = None
+        if enable_narration:
+            try:
+                # Generate simple narration based on listing
+                narration_text = f"Welcome to this beautiful {listing.get('property_type', 'property')} located at {listing.get('address')}. "
+                narration_text += f"This property features {listing.get('bedrooms', 'multiple')} bedrooms and {listing.get('bathrooms', 'multiple')} bathrooms. "
+                if listing.get('square_feet'):
+                    narration_text += f"With {listing.get('square_feet')} square feet of living space. "
+                if listing.get('description'):
+                    narration_text += listing.get('description')
+            except Exception as e:
+                logger.error(f"Failed to generate narration: {e}")
+        
+        # Update listing with tour info
+        await db.listings.update_one(
+            {"id": listing_id},
+            {"$set": {
+                "virtual_tour": {
+                    "url": tour_url,
+                    "created_at": datetime.now(timezone.utc),
+                    "narration_enabled": enable_narration,
+                    "narration_text": narration_text,
+                    "status": "ready"
+                },
+                "status": "tour_ready",
+                "updated_at": datetime.now(timezone.utc)
+            }}
+        )
+        
+        return {
+            "success": True,
+            "message": "360° tour created successfully",
+            "tour_url": tour_url,
+            "narration_enabled": enable_narration
+        }
+        
+    except Exception as e:
+        logger.error(f"Error processing 360 tour: {e}")
+        raise HTTPException(status_code=500, detail=f"Failed to process tour: {str(e)}")
+
+@app.post("/api/director/tour-script")
+async def generate_tour_script(
+    listing_id: str,
+    rooms: List[str],
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate complete AI-guided tour script"""
+    from ai_director import get_ai_director
+    
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    director = get_ai_director()
+    script = await director.generate_tour_script(listing, rooms)
+    
+    # Save script to listing
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {"tour_script": script, "updated_at": datetime.utcnow()}}
+    )
+    
+    return script
+
+@app.post("/api/viral/generate-caption")
+async def generate_viral_caption(
+    listing_id: str,
+    platform: str = "instagram_reels",
+    tone: str = "excited",
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate viral social media caption"""
+    from viral_content_engine import get_viral_engine
+    
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    engine = get_viral_engine()
+    caption = await engine.generate_viral_caption(listing, tone, platform)
+    
+    return caption
+
+@app.post("/api/viral/platform-strategy")
+async def generate_platform_strategy(
+    listing_id: str,
+    tour_duration: int = 60,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate multi-platform viral content strategy"""
+    from viral_content_engine import get_viral_engine
+    
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    engine = get_viral_engine()
+    strategy = await engine.generate_platform_strategy(listing, tour_duration)
+    
+    # Save strategy to listing
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {"viral_strategy": strategy, "updated_at": datetime.utcnow()}}
+    )
+    
+    return strategy
+
+@app.post("/api/viral/generate-clips")
+async def generate_viral_clips(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Generate viral clip moments from full tour"""
+    from viral_content_engine import get_viral_engine
+    from ai_director import get_ai_director
+    
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    tour = listing.get("virtual_tour")
+    if not tour:
+        raise HTTPException(status_code=400, detail="Virtual tour not generated yet")
+    
+    # Get viral moments from tour script
+    director = get_ai_director()
+    viral_moments = []
+    
+    if listing.get("tour_script"):
+        shots = listing["tour_script"].get("shots", [])
+        viral_moments = await director.generate_viral_moments(listing, shots)
+    
+    # Generate clips
+    engine = get_viral_engine()
+    tour_path = tour.get("video_url", "")
+    clips = await engine.generate_viral_clips(tour_path, viral_moments, listing)
+    
+    # Save clips to listing
+    await db.listings.update_one(
+        {"id": listing_id},
+        {"$set": {"viral_clips": clips, "updated_at": datetime.utcnow()}}
+    )
+    
+    return {"clips": clips, "total_clips": len(clips)}
+
+@app.get("/api/viral/trending-hashtags")
+async def get_trending_hashtags(category: str = "real_estate"):
+    """Get trending hashtags for category"""
+    from viral_content_engine import get_viral_engine
+    
+    engine = get_viral_engine()
+    hashtags = engine.get_trending_hashtags(category)
+    
+    return {"category": category, "hashtags": hashtags}
+
+@app.get("/api/voices")
+async def get_voices():
+    """Get available ElevenLabs voices"""
+    if not elevenlabs_engine.enabled:
+        raise HTTPException(status_code=503, detail="ElevenLabs not enabled")
+    return {"voices": elevenlabs_engine.get_available_voices()}
+
+@app.get("/api/voice-options")
+async def get_voice_options():
+    """Get available ElevenLabs voice options"""
+    if not elevenlabs_engine.enabled:
+        raise HTTPException(status_code=503, detail="ElevenLabs voice narration not available")
+    
+    return {
+        "enabled": elevenlabs_engine.enabled,
+        "voices": elevenlabs_engine.voices,
+        "default_voice": "professional_female"
+    }
+
+@app.post("/api/generate-narration")
+async def generate_narration(request: dict):
+    """Generate voice narration for property tour"""
+    if not elevenlabs_engine.enabled:
+        raise HTTPException(status_code=503, detail="ElevenLabs not enabled")
+    
+    script = request.get("script")
+    voice_id = request.get("voice_id", "professional_female")
+    
+    if not script:
+        raise HTTPException(status_code=400, detail="Script required")
+    
+    try:
+        audio_data = await elevenlabs_engine.generate_speech(script, voice_id)
+        return Response(content=audio_data, media_type="audio/mpeg")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@app.get("/api/payment-status/{user_id}")
+async def check_payment_status(user_id: str, db: AsyncIOMotorDatabase = Depends(get_mongo_db)):
+    """Check if user has already paid"""
+    try:
+        response = await db.payments.find_one({"user_id": user_id, "status": "completed"})
+        
+        if response:
+            return {
+                "has_paid": True,
+                "payment_date": response.get('created_at'),
+                "amount": response.get('amount'),
+                "transaction_id": response.get('transaction_id')
+            }
+        
+        return {"has_paid": False}
+        
+    except Exception as e:
+        logger.error(f"Error checking payment status: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/api/verify-payment")
+async def verify_payment(request: dict, db: AsyncIOMotorDatabase = Depends(get_mongo_db)):
+    """Verify Stripe payment and store in database"""
+    try:
+        session_id = request.get('session_id')
+        user_id = request.get('user_id')
+        
+        if not session_id or not user_id:
+            raise HTTPException(status_code=400, detail="Missing session_id or user_id")
+        
+        # Check if payment already verified for this user
+        existing = await db.payments.find_one({"user_id": user_id, "status": "completed"})
+        
+        if existing:
+            logger.info(f"Payment already verified for user {user_id}")
+            return {
+                "success": True,
+                "message": "Payment already verified",
+                "payment": existing
+            }
+        
+        # TODO: Add your Stripe session retrieval here
+        # For now, simulate successful payment
+        payment_data = {
+            'id': str(uuid.uuid4()),
+            'user_id': user_id,
+            'stripe_session_id': session_id,
+            'amount': 97.00,
+            'currency': 'usd',
+            'status': 'completed',
+            'transaction_id': session_id,
+            'created_at': datetime.utcnow()
+        }
+        
+        await db.payments.insert_one(payment_data)
+        
+        return {
+            "success": True,
+            "message": "Payment verified successfully",
+            "payment": payment_data
+        }
+            
+    except Exception as e:
+        logger.error(f"Payment verification error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+# ==================== EXPORT ROUTES ====================
+
+@app.get("/api/listings/{listing_id}/export")
+async def export_listing_data(
+    listing_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    format: str = "json"
+):
+    """Export listing data in various formats"""
+    listing = await db.listings.find_one({"id": listing_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+    
+    # Remove MongoDB _id
+    if "_id" in listing:
+        del listing["_id"]
+    
+    if format == "json":
+        return JSONResponse(content=listing)
+    else:
+        raise HTTPException(status_code=400, detail="Unsupported format")
+
+# ==================== SEARCH & FILTER ROUTES ====================
+
+@app.get("/api/listings/search")
+async def search_listings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
+    q: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    bedrooms: Optional[int] = None,
+    property_type: Optional[PropertyType] = None,
+    status: Optional[ListingStatus] = None
+):
+    """Search and filter listings"""
+    query = {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}
+    
+    if q:
+        query["$or"] = [
+            {"address": {"$regex": q, "$options": "i"}},
+            {"city": {"$regex": q, "$options": "i"}},
+            {"description": {"$regex": q, "$options": "i"}}
+        ]
+    
+    if min_price:
+        query["price"] = {"$gte": min_price}
+    if max_price:
+        query.setdefault("price", {})["$lte"] = max_price
+    
+    if bedrooms:
+        query["bedrooms"] = bedrooms
+    
+    if property_type:
+        query["property_type"] = property_type
+    
+    if status:
+        query["status"] = status
+    
+    listings = await db.listings.find(query).sort("created_at", -1).to_list(100)
+    return [Listing(**listing) for listing in listings]
+
+# ==================== BATCH OPERATIONS ====================
+
+@app.post("/api/listings/batch/status")
+async def batch_update_status(
+    listing_ids: List[str],
+    new_status: ListingStatus,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Update status for multiple listings"""
+    result = await db.listings.update_many(
+        {
+            "id": {"$in": listing_ids},
+            "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
+        },
+        {
+            "$set": {
+                "status": new_status,
+                "updated_at": datetime.utcnow()
+            }
+        }
+    )
+    
+    return {
+        "success": True,
+        "updated_count": result.modified_count
+    }
+
+@app.delete("/api/listings/batch/delete")
+async def batch_delete_listings(
+    listing_ids: List[str],
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Delete multiple listings"""
+    result = await db.listings.delete_many(
+        {
+            "id": {"$in": listing_ids},
+            "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id
+        }
+    )
+    
+    # Cleanup files
+    for listing_id in listing_ids:
+        tour_dir = settings.TOURS_DIR / listing_id
+        if tour_dir.exists():
+            shutil.rmtree(tour_dir)
+    
+    return {
+        "success": True,
+        "deleted_count": result.deleted_count
+    }
+
+# ==================== WEBHOOKS (Optional) ====================
+
+@app.post("/api/webhooks/mls")
+async def mls_webhook(
+    payload: Dict[str, Any],
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Handle MLS webhook notifications"""
+    logger.info(f"MLS webhook received: {payload}")
+    
+    listing_id = payload.get("listing_id")
+    if listing_id:
+        await db.listings.update_one(
+            {"mls_listing_id": listing_id},
+            {"$set": {
+                "syndication": payload.get("syndication_status", {}),
+                "updated_at": datetime.utcnow()
+            }}
+        )
+    
+    return {"status": "received"}
+
+# ==================== ERROR HANDLERS ====================
+
+@app.exception_handler(HTTPException)
+async def http_exception_handler(request, exc):
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={
+            "error": exc.detail,
+            "status_code": exc.status_code
+        }
+    )
+
+@app.exception_handler(Exception)
+async def general_exception_handler(request, exc):
+    logger.error(f"Unhandled exception: {exc}")
+    return JSONResponse(
+        status_code=500,
+        content={
+            "error": "Internal server error",
+            "detail": str(exc) if settings.DEBUG else "An error occurred"
+        }
+    )
+
+# ==================== RUN SERVER ====================
+
+if __name__ == "__main__":
+    import uvicorn
+    
+    print(f"""
+╔══════════════════════════════════════════════════════════════╗
+║                                                              ║
+║              🏠 ListingSpark AI Server v{settings.VERSION}                ║
+║                                                              ║
+║  AI-Powered Real Estate Platform with:                      ║
+║  • 360° Virtual Tours with Camera Movement                  ║
+║  • AI Content Generation (GPT-4)                            ║
+║  • Voice Narration (ElevenLabs)                             ║
+║  • Image Enhancement                                         ║
+║  • MLS Integration (RESO Web API)                           ║
+║  • Portal Syndication (Zillow, Realtor.com, Trulia)        ║
+║                                                              ║
+║  Starting server on http://0.0.0.0:8000                     ║
+║  API Docs: http://localhost:8000/docs                       ║
+║                                                              ║
+╚══════════════════════════════════════════════════════════════╝
+    """)
+    
+    uvicorn.run(
+        "server:app",
+        host="0.0.0.0",
+        port=8000,
+        reload=settings.DEBUG,
+        log_level="info"
+    )
+
+
+
+# ==================== CLIENT MANAGEMENT SYSTEM ENDPOINTS ====================
+
+from client_management import (
+    client_service,
+    document_service,
+    ClientCreate,
+    ClientUpdate,
+    DocumentCreate,
+    DocumentSign,
+    DocumentType,
+    DocumentStatus,
+    init_client_tables
+)
+
+# Initialize client tables
+try:
+    init_client_tables()
+except Exception as e:
+    print(f"⚠️ Client tables initialization: {e}")
+
+@app.post("/api/clients")
+async def create_client(
+    client_data: ClientCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new client"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.create_client(user_id, client_data)
+        return client
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create client: {str(e)}")
+
+@app.get("/api/clients")
+async def get_clients(
+    client_type: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get all clients for the current user"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        clients = await client_service.get_clients(user_id, client_type)
+        return clients
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get clients: {str(e)}")
+
+@app.get("/api/clients/{client_id}")
+async def get_client(
+    client_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get specific client with activity and documents"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        
+        # Get client
+        client = await client_service.get_client(client_id, user_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Get activity
+        activity = await client_service.get_client_activity(client_id, user_id)
+        
+        # Get documents
+        documents = await document_service.get_documents(user_id, client_id=client_id)
+        
+        return {
+            "client": client,
+            "activity": activity,
+            "documents": documents
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get client: {str(e)}")
+
+@app.put("/api/clients/{client_id}")
+async def update_client(
+    client_id: str,
+    updates: ClientUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update client information"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.update_client(client_id, user_id, updates)
+        
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        
+        # Log activity
+        await client_service.log_activity(
+            client_id, user_id, "client_updated",
+            "Client information updated"
+        )
+        
+        return client
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update client: {str(e)}")
+
+@app.get("/api/clients/{client_id}/activity")
+async def get_client_activity(
+    client_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get client activity timeline"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        activity = await client_service.get_client_activity(client_id, user_id)
+        return activity
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get activity: {str(e)}")
+
+
+# ==================== DOCUMENT MANAGEMENT ENDPOINTS ====================
+
+@app.get("/api/templates")
+async def get_document_templates(document_type: Optional[str] = None):
+    """Get document templates"""
+    try:
+        templates = await document_service.get_templates(document_type)
+        return templates
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get templates: {str(e)}")
+
+@app.post("/api/documents")
+async def create_document(
+    doc_data: DocumentCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a new document from template or custom content"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.create_document(user_id, doc_data)
+        
+        # Log activity
+        await client_service.log_activity(
+            doc_data.client_id, user_id, "document_created",
+            f"Document '{doc_data.title}' created",
+            {"document_id": document['id'], "document_type": doc_data.document_type.value}
+        )
+        
+        return document
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create document: {str(e)}")
+
+@app.get("/api/documents")
+async def get_documents(
+    client_id: Optional[str] = None,
+    status: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Get all documents"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        documents = await document_service.get_documents(user_id, client_id, status)
+        return documents
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get documents: {str(e)}")
+
+@app.get("/api/documents/{document_id}")
+async def get_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Get specific document"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return document
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get document: {str(e)}")
+
+@app.post("/api/documents/{document_id}/send")
+async def send_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Send document to client for signature"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        # Mark as sent
+        await document_service.send_document(document_id, user_id)
+        
+        # Log activity
+        await client_service.log_activity(
+            document['client_id'], user_id, "document_sent",
+            f"Document '{document['title']}' sent for signature",
+            {"document_id": document_id}
+        )
+        
+        # TODO: Send email with signing link
+        # signing_link = f"https://yourdomain.com/sign/{document_id}"
+        
+        return {
+            "status": "sent",
+            "document_id": document_id,
+            "message": "Document sent successfully"
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to send document: {str(e)}")
+
+@app.post("/api/documents/{document_id}/sign")
+async def sign_document(sign_data: DocumentSign):
+    """Client endpoint to sign a document (public - no auth required)"""
+    try:
+        # Sign the document
+        success = await document_service.sign_document(sign_data)
+        
+        if not success:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        return {
+            "status": "signed",
+            "document_id": sign_data.document_id,
+            "signed_at": sign_data.signed_at.isoformat()
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to sign document: {str(e)}")
+
+@app.get("/api/documents/{document_id}/download")
+async def download_document(
+    document_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Download a signed document"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        document = await document_service.get_document(document_id, user_id)
+        
+        if not document:
+            raise HTTPException(status_code=404, detail="Document not found")
+        
+        if document['status'] != DocumentStatus.SIGNED.value:
+            raise HTTPException(status_code=400, detail="Document not signed yet")
+        
+        # TODO: Generate PDF with signature
+        # For now, return content as text
+        return {
+            "document_id": document_id,
+            "title": document['title'],
+            "content": document['content'],
+            "signature_data": document['signature_data'],
+            "signed_at": document['signed_at']
+        }
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to download document: {str(e)}")
+
+
+# ============================================================
+# SQLite Fallback Auth Endpoints
+# ============================================================
+
+
+

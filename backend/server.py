@@ -1848,8 +1848,6 @@ async def complete_listing_workflow(
         "steps": ["AI Content Generation", "Image Enhancement" if has_images else "Skipping Images", "Finalizing"],
         "estimated_time": "2-3 minutes"
     }
-        ]
-    }
 
 @app.get("/api/workflow/status/{listing_id}")
 async def get_workflow_status(

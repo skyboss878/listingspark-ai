@@ -1,6 +1,5 @@
 """
 from sqlite_auth import SQLiteAuth
-from sqlite_db_adapter import sqlite_db
 ListingSpark AI - Complete Server with 360° Tours, AI Content, MLS Integration
 Integrates ALL existing features: Video tours, AI enhancement, Voice narration, MLS publishing
 """
@@ -11,7 +10,6 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse, FileResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlite_auth import SQLiteAuth
-from sqlite_db_adapter import sqlite_db
 from contextlib import asynccontextmanager
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from datetime import datetime, timedelta
@@ -115,14 +113,27 @@ class Settings:
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # CORS Origins
-CORS_ORIGINS = ["*"]
+CORS_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:5173",
+    "http://localhost:5174",
+    "http://10.123.181.88:3000",
+    "http://192.168.1.22:3000",
+    "http://192.168.1.85:3000"
+]
 
 
 # Create FastAPI app instance
-# Duplicate app creation - commented out
-# app = FastAPI(title="ListingSpark AI", version="2.0.0")
+app = FastAPI(title="ListingSpark AI", version="2.0.0")
 
-# First CORS middleware removed (duplicate)
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=CORS_ORIGINS,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 settings = Settings()
 
@@ -869,21 +880,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add validation error handler to see what's wrong
-from fastapi.exceptions import RequestValidationError
-from fastapi.responses import JSONResponse
-
-@app.exception_handler(RequestValidationError)
-async def validation_exception_handler(request, exc):
-    logger.error(f"Validation error: {exc.errors()}")
-    logger.error(f"Request body: {exc.body}")
-    return JSONResponse(
-        status_code=422,
-        content={"detail": exc.errors(), "body": exc.body}
-    )
-
-# )
-
 # Static files
 app.mount("/uploads", StaticFiles(directory=settings.UPLOAD_DIR), name="uploads")
 app.mount("/tours", StaticFiles(directory=settings.TOURS_DIR), name="tours")
@@ -934,30 +930,20 @@ async def health_check():
 @app.post("/api/auth/register", response_model=Token)
 async def register(user_data: UserCreate):
     """Register a new user with SQLite and start 3-day free trial"""
-    try:
-        logger.info(f"Register attempt - Email: {user_data.email}, Name: {user_data.full_name}")
-        
-        if Database.sqlite_auth is None:
-            logger.error("Auth system not initialized")
-            raise HTTPException(status_code=503, detail="Auth system not initialized")
+    if Database.sqlite_auth is None:
+        raise HTTPException(status_code=503, detail="Auth system not initialized")
 
-        user, error = await Database.sqlite_auth.create_user(
-            email=user_data.email,
-            password=user_data.password,
-            full_name=user_data.full_name,
-            company=user_data.company,
-            phone=user_data.phone,
-            role=user_data.role.value if hasattr(user_data.role, 'value') else user_data.role
-        )
+    user, error = await Database.sqlite_auth.create_user(
+        email=user_data.email,
+        password=user_data.password,
+        full_name=user_data.full_name,
+        company=user_data.company,
+        phone=user_data.phone,
+        role=user_data.role
+    )
 
-        if error:
-            logger.error(f"Create user error: {error}")
-            raise HTTPException(status_code=400, detail=error)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error in register: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+    if error:
+        raise HTTPException(status_code=400, detail=error)
 
     # Start 3-day free trial automatically
     try:
@@ -1091,16 +1077,14 @@ async def create_listing(
 @app.get("/api/listings", response_model=List[Listing])
 async def get_listings(
     current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db),
     status: Optional[ListingStatus] = None
 ):
-    """Get user listings from SQLite"""
-    try:
-        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
-        listings_data = sqlite_db.get_listings(user_id, status.value if status else None)
-        return [Listing(**listing) for listing in listings_data]
-    except Exception as e:
-        logger.error(f"Error fetching listings: {e}")
-        return []
+    query = {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}
+    if status:
+        query["status"] = status
+    
+    listings = await db.listings.find(query).sort("created_at", -1).to_list(100)
     return [Listing(**listing) for listing in listings]
 
 @app.get("/api/listings/{listing_id}", response_model=Listing)
@@ -1383,16 +1367,12 @@ async def create_mls_account(
 
 @app.get("/api/mls/accounts", response_model=List[MLSAccount])
 async def get_mls_accounts(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    """Get MLS accounts from SQLite"""
-    try:
-        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
-        accounts = sqlite_db.get_mls_accounts(user_id)
-        return [MLSAccount(**{k: v for k, v in acc.items() if k not in ['client_id', 'client_secret']}) for acc in accounts]
-    except Exception as e:
-        logger.error(f"Error fetching MLS accounts: {e}")
-        return []
+    accounts = await db.mls_accounts.find({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}).to_list(100)
+    return [MLSAccount(**{k: v for k, v in acc.items() if k not in ['client_id', 'client_secret']}) for acc in accounts]
+
 @app.get("/api/mls/accounts/{account_id}", response_model=MLSAccount)
 async def get_mls_account(
     account_id: str,
@@ -1642,17 +1622,55 @@ async def get_available_platforms():
 
 @app.get("/api/dashboard/stats")
 async def get_dashboard_stats(
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
 ):
-    """Get dashboard statistics from SQLite"""
-    try:
-        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
-        stats = sqlite_db.get_dashboard_stats(user_id)
-        return stats
-    except Exception as e:
-        logger.error(f"Error fetching dashboard stats: {e}")
-        return {"total_listings": 0, "published": 0, "status_counts": {}, "mls_accounts": 0, "recent_listings": []}
-
+    # Get listing counts by status
+    pipeline = [
+        {"$match": {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}},
+        {"$group": {
+            "_id": "$status",
+            "count": {"$sum": 1}
+        }}
+    ]
+    
+    status_counts = {}
+    async for doc in db.listings.aggregate(pipeline):
+        status_counts[doc["_id"]] = doc["count"]
+    
+    # Get totals
+    total_listings = await db.listings.count_documents({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    published = await db.listings.count_documents({
+        "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id,
+        "status": {"$in": [ListingStatus.PUBLISHED, ListingStatus.SYNDICATED]}
+    })
+    mls_accounts = await db.mls_accounts.count_documents({"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    
+    # Get recent activity
+    recent_listings = await db.listings.find(
+        {"user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id}
+    ).sort("created_at", -1).limit(5).to_list(5)
+    
+    return {
+        "total_listings": total_listings,
+        "published_listings": published,
+        "draft_listings": status_counts.get(ListingStatus.DRAFT, 0),
+        "ai_enhanced": status_counts.get(ListingStatus.AI_ENHANCED, 0),
+        "tour_generated": status_counts.get(ListingStatus.TOUR_GENERATED, 0),
+        "ready_to_publish": status_counts.get(ListingStatus.READY_TO_PUBLISH, 0),
+        "mls_accounts": mls_accounts,
+        "status_breakdown": status_counts,
+        "recent_listings": [
+            {
+                "id": listing["id"],
+                "address": listing["address"],
+                "price": listing["price"],
+                "status": listing["status"],
+                "created_at": listing["created_at"]
+            }
+            for listing in recent_listings
+        ]
+    }
 
 @app.get("/api/dashboard/activity")
 async def get_recent_activity(

@@ -8,6 +8,11 @@ axios.defaults.headers.common['Content-Type'] = 'application/json';
 
 // API Service
 const api = {
+  get: (...args) => axios.get(...args),
+  post: (...args) => axios.post(...args),
+  put: (...args) => axios.put(...args),
+  delete: (...args) => axios.delete(...args),
+
   // Users
   users: {
     create: async (email, name) => {

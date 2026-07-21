@@ -115,7 +115,11 @@ class Settings:
     DEBUG = os.getenv("DEBUG", "false").lower() == "true"
 
 # CORS Origins
-CORS_ORIGINS = ["*"]
+CORS_ORIGINS = [
+    "https://realtour-beta.vercel.app",
+    "http://localhost:3000",
+    "http://localhost:8000",
+]
 
 
 # Create FastAPI app instance

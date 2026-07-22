@@ -82,6 +82,52 @@ class SQLiteDB:
         return {row['status']: row['count'] for row in rows}
     
     # MLS accounts operations
+    def ensure_mls_schema(self):
+        """Rebuild mls_accounts with model-matching schema (old table was never used)"""
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute("PRAGMA table_info(mls_accounts)")
+        cols = [r[1] for r in cur.fetchall()]
+        if 'provider' not in cols:
+            cur.execute("DROP TABLE IF EXISTS mls_accounts")
+            cur.execute('''CREATE TABLE mls_accounts (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                provider TEXT NOT NULL,
+                account_name TEXT NOT NULL,
+                client_id TEXT,
+                client_secret TEXT,
+                api_endpoint TEXT,
+                description TEXT,
+                is_active INTEGER DEFAULT 1,
+                is_connected INTEGER DEFAULT 0,
+                last_sync TEXT,
+                created_at TEXT
+            )''')
+            conn.commit()
+        conn.close()
+
+    def create_mls_account(self, account: Dict) -> Dict:
+        self.ensure_mls_schema()
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute(
+            '''INSERT INTO mls_accounts
+               (id, user_id, provider, account_name, client_id, client_secret,
+                api_endpoint, description, is_active, is_connected, last_sync, created_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)''',
+            (account['id'], account['user_id'], str(account['provider']),
+             account['account_name'], account.get('client_id'), account.get('client_secret'),
+             account.get('api_endpoint'), account.get('description'),
+             1 if account.get('is_active', True) else 0,
+             1 if account.get('is_connected') else 0,
+             account.get('last_sync'),
+             str(account.get('created_at', '')))
+        )
+        conn.commit()
+        conn.close()
+        return account
+
     def get_mls_accounts(self, user_id: str) -> List[Dict]:
         conn = self.get_connection()
         cursor = conn.cursor()

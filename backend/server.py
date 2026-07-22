@@ -404,8 +404,8 @@ class Listing(ListingCreate):
 class MLSAccountCreate(BaseModel):
     provider: MLSProvider
     account_name: str
-    client_id: str
-    client_secret: str
+    client_id: Optional[str] = None
+    client_secret: Optional[str] = None
     api_endpoint: Optional[str] = None
     description: Optional[str] = None
 
@@ -1361,28 +1361,33 @@ Append this after Part 3 to complete server.py
 @app.post("/api/mls/accounts", response_model=MLSAccount)
 async def create_mls_account(
     account_data: MLSAccountCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+    current_user: User = Depends(get_current_user)
 ):
+    provider_val = account_data.provider.value if hasattr(account_data.provider, 'value') else str(account_data.provider)
     account_dict = {
         "id": str(uuid.uuid4()),
         "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id,
         **account_data.dict(),
+        "provider": provider_val,
         "is_active": True,
         "is_connected": False,
         "last_sync": None,
-        "created_at": datetime.utcnow()
+        "created_at": datetime.utcnow().isoformat()
     }
-    
-    # Test connection
-    mls = MLSIntegration(account_dict)
-    auth_success = await mls.authenticate()
-    if auth_success:
-        test = await mls.test_connection()
-        account_dict["is_connected"] = test.get('connected', False)
-    await mls.close()
-    
-    await db.mls_accounts.insert_one(account_dict)
+
+    if provider_val == "demo":
+        account_dict["is_connected"] = True
+    elif account_data.client_id and account_data.client_secret:
+        try:
+            mls = MLSIntegration(account_dict)
+            if await mls.authenticate():
+                test = await mls.test_connection()
+                account_dict["is_connected"] = test.get('connected', False)
+            await mls.close()
+        except Exception as e:
+            logger.error(f"MLS connection test failed: {e}")
+
+    sqlite_db.create_mls_account(account_dict)
     return MLSAccount(**{k: v for k, v in account_dict.items() if k not in ['client_id', 'client_secret']})
 
 @app.get("/api/mls/accounts", response_model=List[MLSAccount])

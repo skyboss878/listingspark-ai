@@ -193,10 +193,141 @@ class Database:
             cls.sqlite_conn.close()
             logger.info("❌ Closed SQLite connection")
 
+
+# ==================== SQLite shim replacing MongoDB ====================
+import json as _json
+
+class _SQLiteCollection:
+    def __init__(self, name):
+        self.name = name
+
+    def _conn(self):
+        import sqlite3
+        conn = sqlite3.connect(os.getenv("SQLITE_DB", "listingspark.db"))
+        conn.row_factory = sqlite3.Row
+        return conn
+
+    def _ensure(self, doc):
+        conn = self._conn(); cur = conn.cursor()
+        cur.execute(f'CREATE TABLE IF NOT EXISTS "{self.name}" (id TEXT PRIMARY KEY)')
+        cur.execute(f'PRAGMA table_info("{self.name}")')
+        existing = {r[1] for r in cur.fetchall()}
+        for k in doc:
+            if k not in existing:
+                cur.execute(f'ALTER TABLE "{self.name}" ADD COLUMN "{k}" TEXT')
+        conn.commit(); conn.close()
+
+    def _enc(self, v):
+        if isinstance(v, (dict, list)): return _json.dumps(v, default=str)
+        if hasattr(v, 'isoformat'): return v.isoformat()
+        if hasattr(v, 'value'): return v.value
+        return v
+
+    def _dec(self, row):
+        d = dict(row)
+        for k, v in d.items():
+            if isinstance(v, str) and v[:1] in ('{', '['):
+                try: d[k] = _json.loads(v)
+                except Exception: pass
+        return d
+
+    async def insert_one(self, doc):
+        doc = {k: v for k, v in doc.items() if k != '_id'}
+        row = {k: self._enc(v) for k, v in doc.items()}
+        self._ensure(row)
+        conn = self._conn(); cur = conn.cursor()
+        cols = ', '.join(f'"{k}"' for k in row); ph = ', '.join('?' for _ in row)
+        cur.execute(f'INSERT OR REPLACE INTO "{self.name}" ({cols}) VALUES ({ph})', tuple(row.values()))
+        conn.commit(); conn.close()
+
+    def _where(self, query):
+        clauses, vals = [], []
+        for k, v in (query or {}).items():
+            clauses.append(f'"{k}" = ?'); vals.append(self._enc(v))
+        return (' WHERE ' + ' AND '.join(clauses) if clauses else ''), vals
+
+    async def find_one(self, query=None, *a, **kw):
+        try:
+            w, vals = self._where(query)
+            conn = self._conn(); cur = conn.cursor()
+            cur.execute(f'SELECT * FROM "{self.name}"{w} LIMIT 1', vals)
+            row = cur.fetchone(); conn.close()
+            return self._dec(row) if row else None
+        except Exception:
+            return None
+
+    def find(self, query=None, *a, **kw):
+        return _SQLiteCursor(self, query)
+
+    async def update_one(self, query, update, *a, **kw):
+        sets = update.get('$set', {}) if isinstance(update, dict) else {}
+        if not sets: return
+        row = {k: self._enc(v) for k, v in sets.items()}
+        self._ensure(row)
+        w, vals = self._where(query)
+        conn = self._conn(); cur = conn.cursor()
+        assign = ', '.join(f'"{k}" = ?' for k in row)
+        cur.execute(f'UPDATE "{self.name}" SET {assign}{w}', tuple(row.values()) + tuple(vals))
+        conn.commit(); conn.close()
+
+    async def delete_one(self, query, *a, **kw):
+        w, vals = self._where(query)
+        conn = self._conn(); cur = conn.cursor()
+        cur.execute(f'DELETE FROM "{self.name}"{w}', vals)
+        conn.commit(); conn.close()
+
+    async def delete_many(self, query, *a, **kw):
+        await self.delete_one(query)
+
+    async def count_documents(self, query=None, *a, **kw):
+        try:
+            w, vals = self._where(query)
+            conn = self._conn(); cur = conn.cursor()
+            cur.execute(f'SELECT COUNT(*) FROM "{self.name}"{w}', vals)
+            n = cur.fetchone()[0]; conn.close()
+            return n
+        except Exception:
+            return 0
+
+class _SQLiteCursor:
+    def __init__(self, coll, query):
+        self.coll, self.query = coll, query
+        self._limit = 1000; self._rows = None
+
+    def sort(self, *a, **kw): return self
+    def limit(self, n): self._limit = n; return self
+    def skip(self, n): return self
+
+    def _fetch(self):
+        try:
+            w, vals = self.coll._where(self.query)
+            conn = self.coll._conn(); cur = conn.cursor()
+            cur.execute(f'SELECT * FROM "{self.coll.name}"{w} LIMIT ?', vals + [self._limit])
+            rows = [self.coll._dec(r) for r in cur.fetchall()]; conn.close()
+            return rows
+        except Exception:
+            return []
+
+    async def to_list(self, length=None):
+        return self._fetch()[:length] if length else self._fetch()
+
+    def __aiter__(self):
+        self._rows = iter(self._fetch()); return self
+
+    async def __anext__(self):
+        try: return next(self._rows)
+        except StopIteration: raise StopAsyncIteration
+
+class _SQLiteDB:
+    def __getattr__(self, name):
+        return _SQLiteCollection(name)
+    def __getitem__(self, name):
+        return _SQLiteCollection(name)
+
+_sqlite_shim_db = _SQLiteDB()
+
 async def get_mongo_db() -> AsyncIOMotorDatabase:
-    if Database.mongo_db is None:
-        raise HTTPException(status_code=503, detail="Database not available")
-    return Database.mongo_db
+    return _sqlite_shim_db
 
 # ==================== ENUMS ====================
 

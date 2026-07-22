@@ -1,10 +1,12 @@
+import os
 import sqlite3
 import json
 from typing import List, Dict, Optional, Any
 from datetime import datetime
 
 class SQLiteDB:
-    def __init__(self, db_path='listingspark.db'):
+    def __init__(self, db_path=None):
+        db_path = db_path or os.getenv('SQLITE_DB', 'listingspark.db')
         self.db_path = db_path
     
     def get_connection(self):

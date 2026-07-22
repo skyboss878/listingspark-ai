@@ -14,7 +14,8 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 
 class SQLiteAuth:
-    def __init__(self, db_path: str = "listingspark.db"):
+    def __init__(self, db_path: str = None):
+        db_path = db_path or os.getenv("SQLITE_DB", "listingspark.db")
         self.db_path = db_path
         self.conn: Optional[sqlite3.Connection] = None
     

@@ -15,10 +15,50 @@ class SQLiteDB:
         return conn
     
     def dict_factory(self, row):
-        """Convert row to dict"""
-        return {key: row[key] for key in row.keys()}
+        d = {key: row[key] for key in row.keys()}
+        for k, v in d.items():
+            if isinstance(v, str) and v[:1] in ('{', '['):
+                try:
+                    d[k] = json.loads(v)
+                except Exception:
+                    pass
+        return d
     
     # Listings operations
+    def ensure_listings_schema(self, listing: Dict):
+        """Ensure listings table has a column for every key in the listing dict"""
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cur.execute("CREATE TABLE IF NOT EXISTS listings (id TEXT PRIMARY KEY)")
+        cur.execute("PRAGMA table_info(listings)")
+        existing = {r[1] for r in cur.fetchall()}
+        for key in listing.keys():
+            if key not in existing:
+                cur.execute(f'ALTER TABLE listings ADD COLUMN "{key}" TEXT')
+        conn.commit()
+        conn.close()
+
+    def create_listing(self, listing: Dict) -> Dict:
+        row = {}
+        for k, v in listing.items():
+            if isinstance(v, (dict, list)):
+                row[k] = json.dumps(v)
+            elif hasattr(v, 'isoformat'):
+                row[k] = v.isoformat()
+            elif hasattr(v, 'value'):
+                row[k] = v.value
+            else:
+                row[k] = v
+        self.ensure_listings_schema(row)
+        conn = self.get_connection()
+        cur = conn.cursor()
+        cols = ', '.join(f'"{k}"' for k in row)
+        ph = ', '.join('?' for _ in row)
+        cur.execute(f'INSERT INTO listings ({cols}) VALUES ({ph})', tuple(row.values()))
+        conn.commit()
+        conn.close()
+        return listing
+
     def get_listings(self, user_id: str, status: Optional[str] = None) -> List[Dict]:
         conn = self.get_connection()
         cursor = conn.cursor()

@@ -1069,8 +1069,7 @@ async def get_me(current_user: User = Depends(get_current_user)):
 @app.post("/api/listings", response_model=Listing)
 async def create_listing(
     listing_data: ListingCreate,
-    current_user: User = Depends(get_current_user),
-    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+    current_user: User = Depends(get_current_user)
 ):
     listing_dict = {
         "id": str(uuid.uuid4()),
@@ -1088,8 +1087,7 @@ async def create_listing(
         "created_at": datetime.utcnow(),
         "updated_at": datetime.utcnow()
     }
-    
-    await db.listings.insert_one(listing_dict)
+    sqlite_db.create_listing(listing_dict)
     return Listing(**listing_dict)
 
 @app.get("/api/listings", response_model=List[Listing])

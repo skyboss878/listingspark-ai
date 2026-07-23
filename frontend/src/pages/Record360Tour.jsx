@@ -37,6 +37,17 @@ const Record360Tour = () => {
   const [permissionState, setPermissionState] = useState('prompt'); // 'prompt', 'granted', 'denied'
   const [permissionRequested, setPermissionRequested] = useState(false);
 
+  // Re-attach stream whenever the real video element mounts
+  useEffect(() => {
+    if (stream && videoRef.current && !videoRef.current.srcObject) {
+      videoRef.current.srcObject = stream;
+      videoRef.current.onloadedmetadata = () => {
+        videoRef.current.play().catch(e => console.log('play error:', e));
+      };
+      videoRef.current.play().catch(() => {});
+    }
+  }, [stream, permissionState]);
+
   useEffect(() => {
     fetchListing();
     return () => {

@@ -11,10 +11,10 @@ from enum import Enum
 import json
 
 try:
-    from openai import AsyncOpenAI
-    OPENAI_AVAILABLE = True
+    from anthropic import AsyncAnthropic
+    ANTHROPIC_AVAILABLE = True
 except ImportError:
-    OPENAI_AVAILABLE = False
+    ANTHROPIC_AVAILABLE = False
 
 logger = logging.getLogger(__name__)
 

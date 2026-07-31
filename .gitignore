@@ -35,3 +35,4 @@ media/
 
 # Static files collected
 staticfiles/
+backend/listingspark.db

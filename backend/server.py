@@ -2080,21 +2080,19 @@ async def get_real_time_guidance(
 ):
     """Get real-time AI guidance during recording"""
     try:
-        from ai_director import get_ai_director
-        
+        from ai_director import get_ai_director, RoomType
+
         room_type = guidance_request.get('room_type', 'living_room')
         duration = guidance_request.get('duration', 0)
-        
-        # Provide time-based guidance
-        if duration < 10:
-            guidance = "Pan slowly to the right, capturing all wall features..."
-        elif duration < 20:
-            guidance = "Tilt up to show ceiling details and lighting fixtures..."
-        elif duration < 30:
-            guidance = "Pan down to showcase flooring and lower features..."
-        else:
-            guidance = "Almost done! Pan back to center for the final shot..."
-        
+
+        director = get_ai_director()
+        guidance_data = await director.generate_shot_guidance(
+            room_type=RoomType(room_type),
+            property_details={"property_type": "single_family"},
+            current_position=f"duration_{duration}"
+        )
+        guidance = guidance_data.get("verbal_direction", "Continue capturing the room details...")
+
         return {
             "success": True,
             "guidance": guidance,
@@ -2105,6 +2103,7 @@ async def get_real_time_guidance(
             "success": True,
             "guidance": "Continue capturing the room details..."
         }
+
 
 @app.post("/api/360tour/process/{listing_id}")
 async def process_360_tour(

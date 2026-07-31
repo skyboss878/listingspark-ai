@@ -23,6 +23,23 @@ const Record360Tour = () => {
   const [tourProgress, setTourProgress] = useState(0);
   const [processing, setProcessing] = useState(false);
 
+  const speak = (text) => {
+    if (!voiceNarration || !text) return;
+    try {
+      if ('speechSynthesis' in window) {
+        window.speechSynthesis.cancel();
+        const utterance = new SpeechSynthesisUtterance(text);
+        utterance.rate = 0.95;
+        window.speechSynthesis.speak(utterance);
+      }
+    } catch (e) {}
+  };
+
+  const updateGuidance = (text) => {
+    setAiGuidance(text);
+    speak(text);
+  };
+
   const rooms = [
     { id: 'entrance', name: 'Entrance/Foyer', icon: '🚪' },
     { id: 'living_room', name: 'Living Room', icon: '🛋️' },
@@ -162,9 +179,9 @@ const Record360Tour = () => {
         room_type: room.id,
         property_type: listing?.property_type || 'single_family'
       });
-      setAiGuidance(response.data.initial_guidance || 'Start by panning slowly from left to right...');
+      updateGuidance(response.data.initial_guidance || 'Start by panning slowly from left to right...');
     } catch (error) {
-      setAiGuidance('Start by panning slowly from left to right, capturing all details...');
+      updateGuidance('Start by panning slowly from left to right, capturing all details...');
     }
 
     // Start recording
@@ -196,7 +213,7 @@ const Record360Tour = () => {
           room_type: room.id,
           duration: Math.floor(Date.now() / 1000)
         });
-        setAiGuidance(response.data.guidance || aiGuidance);
+        updateGuidance(response.data.guidance || aiGuidance);
       } catch (error) {
         // Use fallback guidance
         const fallbackGuidance = [
@@ -207,7 +224,7 @@ const Record360Tour = () => {
           'Almost done, pan back to center...'
         ];
         const randomGuidance = fallbackGuidance[Math.floor(Math.random() * fallbackGuidance.length)];
-        setAiGuidance(randomGuidance);
+        updateGuidance(randomGuidance);
       }
     }, 8000);
 
@@ -224,7 +241,7 @@ const Record360Tour = () => {
     }
     setRecording(false);
     setCurrentRoom('');
-    setAiGuidance('');
+    updateGuidance('');
     toast.success('Room recorded! Select next room or complete tour.');
   };
 
@@ -420,13 +437,13 @@ const Record360Tour = () => {
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: -20 }}
-                    className="absolute bottom-4 left-4 right-4 bg-gradient-to-r from-purple-600/90 to-pink-600/90 backdrop-blur-sm rounded-lg p-4 border border-white/20"
+                    className="absolute bottom-4 left-4 right-4 bg-black/70 backdrop-blur-sm rounded-lg p-3 border border-white/20 max-h-24 overflow-hidden"
                   >
                     <div className="flex items-start gap-3">
                       <Navigation className="w-6 h-6 text-white flex-shrink-0 mt-1 animate-pulse" />
                       <div>
-                        <p className="font-semibold text-sm mb-1">🤖 AI Director:</p>
-                        <p className="text-lg">{aiGuidance}</p>
+                        <p className="font-semibold text-xs mb-1 text-purple-200">🤖 Listen for AI Director:</p>
+                        <p className="text-sm">{aiGuidance}</p>
                       </div>
                     </div>
                   </motion.div>

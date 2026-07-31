@@ -92,7 +92,7 @@ Current Position: {current_position}
 
 Provide guidance in JSON format with:
 1. camera_angle: Best angle to use (wide_shot, medium_shot, detail_shot, pan, tilt, dolly)
-2. verbal_direction: Concise, friendly instruction (max 2 sentences)
+2. verbal_direction: ONE short, natural sentence, under 15 words — this will be spoken aloud and shown as a small on-screen label
 3. key_features: List of 3 features to highlight in this room
 4. movement_speed: slow/medium/fast
 5. duration_seconds: How long to film this shot (5-15 seconds)

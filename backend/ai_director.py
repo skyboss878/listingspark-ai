@@ -56,11 +56,11 @@ class AIDirector:
     """AI Director for guided real estate tour filming"""
     
     def __init__(self, api_key: Optional[str] = None):
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
         self.client = None
         
-        if self.api_key and OPENAI_AVAILABLE:
-            self.client = AsyncOpenAI(api_key=self.api_key)
+        if self.api_key and ANTHROPIC_AVAILABLE:
+            self.client = AsyncAnthropic(api_key=self.api_key)
             self.enabled = True
             logger.info("✅ AI Director Mode initialized")
         else:
@@ -102,17 +102,16 @@ Provide guidance in JSON format with:
 
 Keep directions natural and encouraging like a helpful cinematographer on set."""
 
-            response = await self.client.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "You are an expert real estate cinematographer providing shot-by-shot guidance."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                response_format={"type": "json_object"}
+            response = await self.client.messages.create(
+                model="claude-haiku-4-5",
+                max_tokens=500,
+                system="You are an expert real estate cinematographer providing shot-by-shot guidance. Respond with ONLY valid JSON, no other text.",
+                messages=[{"role": "user", "content": prompt}]
             )
-            
-            guidance = json.loads(response.choices[0].message.content)
+
+            raw_text = response.content[0].text
+            clean = raw_text.replace("```json", "").replace("```", "").strip()
+            guidance = json.loads(clean)
             return guidance
             
         except Exception as e:

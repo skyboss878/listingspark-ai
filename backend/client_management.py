@@ -75,7 +75,7 @@ class DocumentCreate(BaseModel):
 class DocumentSign(BaseModel):
     document_id: str
     signature_data: str  # Base64 encoded signature
-    ip_address: str
+    ip_address: Optional[str] = None  # always overridden server-side from the request
     signed_at: datetime = Field(default_factory=datetime.utcnow)
 
 
@@ -591,7 +591,22 @@ class DocumentManagementService:
             doc['metadata'] = json.loads(doc['metadata'])
         
         return doc
-    
+
+    async def get_document_by_id(self, document_id: str) -> Optional[Dict[str, Any]]:
+        """Public lookup with no user_id filter - the document_id itself acts as the
+        access token for the signing link, same pattern as a password-reset link."""
+        conn = self.get_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM documents WHERE id = ?", (document_id,))
+        row = cursor.fetchone()
+        conn.close()
+        if not row:
+            return None
+        doc = dict(row)
+        if doc.get("metadata"):
+            doc["metadata"] = json.loads(doc["metadata"])
+        return doc
+
     async def send_document(self, document_id: str, user_id: str) -> bool:
         """Mark document as sent"""
         conn = self.get_connection()

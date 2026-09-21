@@ -22,6 +22,30 @@ const Record360Tour = () => {
   const [voiceNarration, setVoiceNarration] = useState(true);
   const [tourProgress, setTourProgress] = useState(0);
   const [processing, setProcessing] = useState(false);
+  const [deviceOrientation, setDeviceOrientation] = useState(null);
+
+  const handleOrientation = (event) => {
+    setDeviceOrientation({
+      alpha: event.alpha,
+      beta: event.beta,
+      gamma: event.gamma
+    });
+  };
+
+  useEffect(() => {
+    if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
+      DeviceOrientationEvent.requestPermission()
+        .then(permission => {
+          if (permission === 'granted') {
+            window.addEventListener('deviceorientation', handleOrientation);
+          }
+        })
+        .catch(console.error);
+    } else {
+      window.addEventListener('deviceorientation', handleOrientation);
+    }
+    return () => window.removeEventListener('deviceorientation', handleOrientation);
+  }, []);
 
   const speak = (text) => {
     if (!voiceNarration || !text) return;
@@ -454,6 +478,14 @@ const Record360Tour = () => {
               {currentRoom && (
                 <div className="absolute top-4 right-4 bg-purple-600/90 backdrop-blur-sm px-4 py-2 rounded-full">
                   <span className="font-semibold">{currentRoom}</span>
+                </div>
+              )}
+
+              {/* Device Orientation Guide */}
+              {deviceOrientation && recording && (
+                <div className="absolute top-16 left-4 bg-black/60 text-white p-3 rounded-lg text-sm">
+                  <div>Direction: {Math.round(deviceOrientation.alpha || 0)}°</div>
+                  <div>Tilt: {Math.round(deviceOrientation.beta || 0)}°</div>
                 </div>
               )}
             </div>

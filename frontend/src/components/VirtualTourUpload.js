@@ -3,8 +3,9 @@ import { motion } from 'framer-motion';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import axios from '../api';
+import { getErrorMessage } from '../utils/errorHelpers';
 
-const API = process.env.REACT_APP_API_URL + '/api' || 'http://localhost:8000/api';
+const API = (process.env.REACT_APP_API_URL || 'http://localhost:8000') + '/api';
 
 const VirtualTourUpload = ({ propertyId, onTourCreated }) => {
   const [uploading, setUploading] = useState(false);
@@ -58,7 +59,7 @@ const VirtualTourUpload = ({ propertyId, onTourCreated }) => {
       
     } catch (error) {
       console.error('Upload error:', error);
-      toast.error(error.response?.data?.detail || 'Upload failed', { id: 'upload' });
+      toast.error(getErrorMessage(error, 'Upload failed'), { id: 'upload' });
     } finally {
       setUploading(false);
     }

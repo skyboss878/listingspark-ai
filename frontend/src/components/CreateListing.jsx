@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '../utils/errorHelpers';
 
 const CreateListing = () => {
   const navigate = useNavigate();
@@ -121,7 +122,7 @@ const CreateListing = () => {
       toast.success('✅ Listing created!', { id: 'create' });
       navigate(`/dashboard`);
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to create listing', { id: 'create' });
+      toast.error(getErrorMessage(error, 'Failed to create listing'), { id: 'create' });
     }
   };
 

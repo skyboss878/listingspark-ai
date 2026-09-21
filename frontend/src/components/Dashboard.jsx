@@ -6,6 +6,7 @@
 import React, { useState, useEffect, useContext, useCallback } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
+import { getErrorMessage } from '../utils/errorHelpers';
 import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, PointElement, LineElement, Title, Tooltip, Legend, ArcElement } from 'chart.js';
 // Charts imported but not used yet
 // import { Bar, Line, Doughnut } from 'react-chartjs-2';
@@ -235,7 +236,7 @@ const Dashboard = () => {
       toast.success('✅ Published to MLS! Syndicating to portals...', { id: 'publish' });
       fetchDashboardData();
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to publish', { id: 'publish' });
+      toast.error(getErrorMessage(error, 'Failed to publish'), { id: 'publish' });
     }
   };
 

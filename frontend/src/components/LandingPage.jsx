@@ -5,7 +5,7 @@ import toast from 'react-hot-toast';
 import axios from '../api';
 import { UserContext } from '../App';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8001';
+const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
 const LandingPage = () => {
   const [isSignupOpen, setIsSignupOpen] = useState(false);
@@ -41,7 +41,11 @@ const LandingPage = () => {
       // Go to dashboard to start using immediately
       navigate('/dashboard');
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to create account. Please try again.');
+      const detail = error.response?.data?.detail;
+      const message = Array.isArray(detail)
+        ? detail.map(d => d.msg || JSON.stringify(d)).join(', ')
+        : (detail || 'Failed to create account. Please try again.');
+      toast.error(message);
       console.error('Signup error:', error.response?.data || error.message);
     }
   };

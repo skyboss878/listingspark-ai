@@ -5,18 +5,28 @@ ListingSpark AI - Complete Server with 360° Tours, AI Content, MLS Integration
 Integrates ALL existing features: Video tours, AI enhancement, Voice narration, MLS publishing
 """
 
-from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, File, UploadFile, Form, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import JSONResponse, FileResponse
+from fastapi.responses import JSONResponse, FileResponse, Response
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from sqlite_auth import SQLiteAuth
 from sqlite_db_adapter import sqlite_db
 from contextlib import asynccontextmanager
+import os
+
+USE_SUPABASE = bool(os.getenv("SUPABASE_URL") and os.getenv("SUPABASE_SERVICE_ROLE_KEY"))
+if USE_SUPABASE:
+    from supabase_adapter import SupabaseAuth as SQLiteAuth, SupabaseDB, get_supabase_mongo_db
+    sqlite_db = SupabaseDB()
+    print("Using Supabase for storage")
+else:
+    print("SUPABASE_URL not set - falling back to local SQLite")
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Optional, List, Dict, Any
 import logging
+import re
 from pathlib import Path
 import os
 import json
@@ -25,7 +35,8 @@ from jose import JWTError, jwt
 from passlib.context import CryptContext
 from pydantic import BaseModel, EmailStr, Field
 from enum import Enum
-from elevenlabs_voice import elevenlabs_engine
+from elevenlabs_voice import get_elevenlabs_engine
+elevenlabs_engine = get_elevenlabs_engine()
 import httpx
 import sqlite3
 import shutil
@@ -327,6 +338,8 @@ class _SQLiteDB:
 _sqlite_shim_db = _SQLiteDB()
 
 async def get_mongo_db() -> AsyncIOMotorDatabase:
+    if USE_SUPABASE:
+        return await get_supabase_mongo_db()
     return _sqlite_shim_db
 
 # ==================== ENUMS ====================
@@ -717,86 +730,102 @@ class MLSIntegration:
 
 class AIContentService:
     """Service for generating AI-powered marketing content"""
-    
+
     @staticmethod
     async def generate_listing_content(listing: Dict[str, Any], tone: str = "professional") -> Dict[str, Any]:
-        """Generate comprehensive AI content for a listing"""
-        
-        try:
-            if settings.OPENAI_API_KEY:
-                from openai import AsyncOpenAI
-                client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
-                
-                prompt = f"""Create compelling real estate marketing content for this property:
-                
+        """Generate comprehensive AI content for a listing using Claude"""
+        import json as _json
+        import traceback
+
+        bedrooms = listing.get('bedrooms', 0)
+        bathrooms = listing.get('bathrooms', 0)
+        square_feet = listing.get('square_feet', 0)
+        property_type = (listing.get('property_type') or 'home').replace('_', ' ')
+        city = listing.get('city', 'the area')
+        state = listing.get('state', '')
+        price = listing.get('price', 0)
+        features = listing.get('features', []) or []
+        address = listing.get('address', '')
+        zip_code = listing.get('zip_code', '')
+
+        if settings.ANTHROPIC_API_KEY:
+            try:
+                from anthropic import AsyncAnthropic
+                client = AsyncAnthropic(api_key=settings.ANTHROPIC_API_KEY)
+
+                prompt = f"""Create compelling real estate marketing content for this property. Respond with ONLY valid JSON, no markdown fences, no preamble.
+
 Property Details:
-- Type: {listing['property_type']}
-- Address: {listing['address']}, {listing['city']}, {listing['state']}
-- Price: ${listing['price']:,.0f}
-- Bedrooms: {listing['bedrooms']}, Bathrooms: {listing['bathrooms']}
-- Square Feet: {listing['square_feet']:,}
-- Features: {', '.join(listing.get('features', []))}
+- Type: {property_type}
+- Address: {address}, {city}, {state}
+- Price: ${price:,.0f}
+- Bedrooms: {bedrooms}, Bathrooms: {bathrooms}
+- Square Feet: {square_feet:,}
+- Features: {', '.join(features)}
 
-Please provide:
-1. A captivating property description (200-300 words, {tone} tone)
-2. An attention-grabbing headline
-3. 5 key highlight points
-4. Social media captions for Facebook, Instagram, and Twitter
-5. An email template for potential buyers
+Return JSON with exactly these keys:
+{{
+  "description": "200-300 word {tone} property description",
+  "headline": "attention-grabbing headline",
+  "highlights": ["5 highlight strings"],
+  "social_captions": {{"facebook": "...", "instagram": "...", "twitter": "..."}},
+  "email_template": "email template with Subject line"
+}}"""
 
-Format as JSON."""
-
-                response = await client.chat.completions.create(
-                    model=settings.AI_MODEL,
-                    messages=[{"role": "user", "content": prompt}],
-                    temperature=settings.AI_TEMPERATURE
+                response = await client.messages.create(
+                    model="claude-haiku-4-5-20251001",
+                    max_tokens=1500,
+                    messages=[{"role": "user", "content": prompt}]
                 )
-                
-                content = response.choices[0].message.content
-                # Parse AI response and structure it
-                
-            # Fallback content if AI not available
-            return {
-                "description": f"Stunning {listing['bedrooms']} bedroom, {listing['bathrooms']} bathroom {listing['property_type'].replace('_', ' ')} in {listing['city']}. This {listing['square_feet']:,} sq ft home offers modern living at its finest. Features include {', '.join(listing.get('features', [])[:3])}. Priced at ${listing['price']:,.0f}.",
-                "headline": f"Your Dream Home Awaits in {listing['city']}!",
-                "social_captions": {
-                    "facebook": f"🏡 New Listing Alert! {listing['bedrooms']}BR/{listing['bathrooms']}BA in {listing['city']} - ${listing['price']:,.0f}. {listing.get('features', [''])[0] if listing.get('features') else 'Beautiful property'}!",
-                    "instagram": f"✨ Just Listed ✨\n{listing['bedrooms']}BR | {listing['bathrooms']}BA | {listing['square_feet']:,} sq ft\n📍 {listing['city']}, {listing['state']}\n💰 ${listing['price']:,.0f}\n#JustListed #RealEstate #{listing['city']}Homes",
-                    "twitter": f"🏠 NEW LISTING: {listing['bedrooms']}BR/{listing['bathrooms']}BA in {listing['city']}\n💵 ${listing['price']:,.0f}\n📏 {listing['square_feet']:,} sq ft\nDM for details! #RealEstate"
-                },
-                "email_template": f"""Subject: New Listing: {listing['address']}
+
+                raw_text = response.content[0].text.strip()
+                raw_text = re.sub(r'^```json\s*|```$', '', raw_text, flags=re.MULTILINE).strip()
+                parsed = _json.loads(raw_text)
+                parsed["generated_at"] = datetime.utcnow()
+                return parsed
+
+            except Exception as e:
+                logger.error(f"Claude AI content generation failed, falling back: {e}")
+                logger.error(traceback.format_exc())
+
+        return {
+            "description": f"Stunning {bedrooms} bedroom, {bathrooms} bathroom {property_type} in {city}. This {square_feet:,} sq ft home offers modern living at its finest. Features include {', '.join(features[:3]) if features else 'quality finishes throughout'}. Priced at ${price:,.0f}.",
+            "headline": f"Your Dream Home Awaits in {city}!",
+            "social_captions": {
+                "facebook": f"\U0001F3E1 New Listing Alert! {bedrooms}BR/{bathrooms}BA in {city} - ${price:,.0f}. {features[0] if features else 'Beautiful property'}!",
+                "instagram": f"\u2728 Just Listed \u2728\n{bedrooms}BR | {bathrooms}BA | {square_feet:,} sq ft\n\U0001F4CD {city}, {state}\n\U0001F4B0 ${price:,.0f}\n#JustListed #RealEstate #{city}Homes",
+                "twitter": f"\U0001F3E0 NEW LISTING: {bedrooms}BR/{bathrooms}BA in {city}\n\U0001F4B5 ${price:,.0f}\n\U0001F4CF {square_feet:,} sq ft\nDM for details! #RealEstate"
+            },
+            "email_template": f"""Subject: New Listing: {address}
 
 Dear [Buyer Name],
 
 I'm excited to share this exceptional property with you:
 
-{listing['address']}
-{listing['city']}, {listing['state']} {listing['zip_code']}
+{address}
+{city}, {state} {zip_code}
 
 Property Highlights:
-- {listing['bedrooms']} Bedrooms, {listing['bathrooms']} Bathrooms
-- {listing['square_feet']:,} Square Feet
-- Priced at ${listing['price']:,.0f}
+- {bedrooms} Bedrooms, {bathrooms} Bathrooms
+- {square_feet:,} Square Feet
+- Priced at ${price:,.0f}
 
-This home features {', '.join(listing.get('features', ['beautiful finishes and modern amenities'])[:3])}.
+This home features {', '.join(features[:3]) if features else 'beautiful finishes and modern amenities'}.
 
 Would you like to schedule a private showing?
 
 Best regards,
 [Your Name]""",
-                "highlights": [
-                    f"{listing['bedrooms']} spacious bedrooms",
-                    f"{listing['bathrooms']} modern bathrooms",
-                    f"{listing['square_feet']:,} sq ft of living space",
-                    f"Prime location in {listing['city']}",
-                    f"Priced to sell at ${listing['price']:,.0f}"
-                ],
-                "generated_at": datetime.utcnow()
-            }
-            
-        except Exception as e:
-            logger.error(f"AI content generation error: {e}")
-            raise HTTPException(status_code=500, detail="Failed to generate AI content")
+            "highlights": [
+                f"{bedrooms} spacious bedrooms",
+                f"{bathrooms} modern bathrooms",
+                f"{square_feet:,} sq ft of living space",
+                f"Prime location in {city}",
+                f"Priced to sell at ${price:,.0f}"
+            ],
+            "generated_at": datetime.utcnow()
+        }
+
 
 # ==================== VIDEO TOUR GENERATION SERVICE ====================
 
@@ -1096,7 +1125,10 @@ async def register(user_data: UserCreate):
 
     # Start 3-day free trial automatically
     try:
-        from trial_system import start_free_trial
+        if USE_SUPABASE:
+            from trial_system_supabase import start_free_trial
+        else:
+            from trial_system import start_free_trial
         trial_info = start_free_trial(user["id"])
         user["trial_info"] = trial_info
     except Exception as e:
@@ -1129,13 +1161,22 @@ async def login(login_data: UserLogin):
 
 # ==================== TRIAL & SUBSCRIPTION ROUTES ====================
 
-from trial_system import (
-    init_trial_system,
-    check_trial_status,
-    get_trial_info,
-    activate_subscription,
-    cancel_subscription
-)
+if USE_SUPABASE:
+    from trial_system_supabase import (
+        init_trial_system,
+        check_trial_status,
+        get_trial_info,
+        activate_subscription,
+        cancel_subscription
+    )
+else:
+    from trial_system import (
+        init_trial_system,
+        check_trial_status,
+        get_trial_info,
+        activate_subscription,
+        cancel_subscription
+    )
 
 # Initialize trial system
 try:
@@ -1168,11 +1209,24 @@ async def activate_user_subscription(
     subscription_id: str,
     current_user: User = Depends(get_current_user)
 ):
-    """Activate subscription after PayPal payment"""
+    """Activate subscription after verifying it is genuinely ACTIVE with PayPal.
+    Never trusts the client-supplied subscription_id alone."""
     user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
     try:
+        from paypal_verify import verify_paypal_subscription
+        verification = await verify_paypal_subscription(subscription_id)
+
+        if not verification["valid"]:
+            logger.warning(f"Rejected subscription activation for user {user_id}: {verification}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Could not verify subscription with PayPal (status: {verification.get('status')})"
+            )
+
         result = activate_subscription(user_id, subscription_id)
         return result
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to activate subscription: {str(e)}")
 
@@ -1463,6 +1517,27 @@ async def get_virtual_tour(
         raise HTTPException(status_code=404, detail="Virtual tour not found")
     
     return tour
+
+@app.get("/api/properties/{property_id}/tours")
+async def get_property_tours(
+    property_id: str,
+    current_user: User = Depends(get_current_user),
+    db: AsyncIOMotorDatabase = Depends(get_mongo_db)
+):
+    """Compatibility route: wraps the single virtual_tour object into the
+    list shape the VirtualTourViewer frontend expects."""
+    listing = await db.listings.find_one({"id": property_id, "user_id": current_user["id"] if isinstance(current_user, dict) else current_user.id})
+    if not listing:
+        return []
+
+    tour = listing.get("virtual_tour")
+    if not tour:
+        return []
+
+    tour_with_id = dict(tour)
+    tour_with_id.setdefault("id", property_id)
+    tour_with_id.setdefault("processing_status", tour.get("status", "completed"))
+    return [tour_with_id]
 
 @app.get("/api/tours/{listing_id}/status")
 async def get_tour_status(
@@ -2584,22 +2659,32 @@ if __name__ == "__main__":
 # ==================== CLIENT MANAGEMENT SYSTEM ENDPOINTS ====================
 
 from client_management import (
-    client_service,
-    document_service,
     ClientCreate,
     ClientUpdate,
     DocumentCreate,
     DocumentSign,
     DocumentType,
     DocumentStatus,
-    init_client_tables
 )
+
+if USE_SUPABASE:
+    from client_management_supabase import (
+        client_service_supabase as client_service,
+        document_service_supabase as document_service,
+        init_client_tables,
+    )
+else:
+    from client_management import (
+        client_service,
+        document_service,
+        init_client_tables,
+    )
 
 # Initialize client tables
 try:
     init_client_tables()
 except Exception as e:
-    print(f"⚠️ Client tables initialization: {e}")
+    print(f"Client tables initialization: {e}")
 
 @app.post("/api/clients")
 async def create_client(
@@ -2762,6 +2847,25 @@ async def get_document(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get document: {str(e)}")
 
+@app.get("/api/documents/{document_id}/public")
+async def get_document_public(document_id: str):
+    """Public document lookup for the signing page - no auth required.
+    The document_id itself acts as the access token (same pattern as a
+    password-reset link), so only non-sensitive fields are returned."""
+    document = await document_service.get_document_by_id(document_id)
+    if not document:
+        raise HTTPException(status_code=404, detail="Document not found")
+    if document.get("status") == "draft":
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    return {
+        "id": document["id"],
+        "title": document["title"],
+        "content": document["content"],
+        "document_type": document.get("document_type"),
+        "status": document["status"],
+    }
+
 @app.post("/api/documents/{document_id}/send")
 async def send_document(
     document_id: str,
@@ -2785,13 +2889,32 @@ async def send_document(
             {"document_id": document_id}
         )
         
-        # TODO: Send email with signing link
-        # signing_link = f"https://yourdomain.com/sign/{document_id}"
-        
+        # Send email with signing link
+        email_result = {"success": False, "error": "No client email on file"}
+        try:
+            client_record = await client_service.get_client(document["client_id"], user_id)
+            if client_record and client_record.get("email"):
+                from document_email import send_document_email
+                frontend_url = os.getenv("FRONTEND_URL", "http://localhost:3000")
+                signing_link = f"{frontend_url}/sign/{document_id}"
+                client_full_name = f"{client_record.get('first_name', '')} {client_record.get('last_name', '')}".strip() or "there"
+                agent_name = current_user.get("full_name") if isinstance(current_user, dict) else getattr(current_user, "full_name", "Your Agent")
+                email_result = send_document_email(
+                    to_email=client_record["email"],
+                    client_name=client_full_name,
+                    document_title=document["title"],
+                    signing_link=signing_link,
+                    agent_name=agent_name or "Your Agent",
+                )
+        except Exception as e:
+            logger.error(f"Failed to send document email: {e}")
+            email_result = {"success": False, "error": str(e)}
+
         return {
             "status": "sent",
             "document_id": document_id,
-            "message": "Document sent successfully"
+            "message": "Document sent successfully",
+            "email": email_result
         }
     except HTTPException:
         raise
@@ -2799,9 +2922,12 @@ async def send_document(
         raise HTTPException(status_code=500, detail=f"Failed to send document: {str(e)}")
 
 @app.post("/api/documents/{document_id}/sign")
-async def sign_document(sign_data: DocumentSign):
+async def sign_document(sign_data: DocumentSign, request: Request):
     """Client endpoint to sign a document (public - no auth required)"""
     try:
+        # Capture the real client IP server-side - never trust a client-supplied value
+        sign_data.ip_address = request.client.host if request.client else None
+
         # Sign the document
         success = await document_service.sign_document(sign_data)
         
@@ -2834,15 +2960,15 @@ async def download_document(
         if document['status'] != DocumentStatus.SIGNED.value:
             raise HTTPException(status_code=400, detail="Document not signed yet")
         
-        # TODO: Generate PDF with signature
-        # For now, return content as text
-        return {
-            "document_id": document_id,
-            "title": document['title'],
-            "content": document['content'],
-            "signature_data": document['signature_data'],
-            "signed_at": document['signed_at']
-        }
+        from document_pdf import generate_signed_pdf
+        pdf_bytes = generate_signed_pdf(document)
+        safe_title = "".join(c for c in document["title"] if c.isalnum() or c in " _-").strip() or "document"
+
+        return Response(
+            content=pdf_bytes,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f'attachment; filename="{safe_title}.pdf"'}
+        )
     except HTTPException:
         raise
     except Exception as e:

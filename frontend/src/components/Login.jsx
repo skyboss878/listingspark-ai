@@ -2,6 +2,7 @@ import { useState, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import axios from '../api';
 import { UserContext } from '../App';
+import { getErrorMessage } from '../utils/errorHelpers';
 
 export default function Login() {
   const navigate = useNavigate();
@@ -56,7 +57,7 @@ export default function Login() {
       navigate('/dashboard');
     } catch (err) {
       console.error('Auth error:', err);
-      const errorMsg = err.response?.data?.detail || err.response?.data?.error || err.message || 'Authentication failed';
+      const errorMsg = getErrorMessage(err, err.response?.data?.error || err.message || 'Authentication failed');
       setError(errorMsg);
     } finally {
       setLoading(false);

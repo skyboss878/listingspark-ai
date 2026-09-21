@@ -23,6 +23,7 @@ import ProCamera360 from './components/ProCamera360';
 import ViewListing from './pages/ViewListing';
 import EditListing from './pages/EditListing';
 import Record360Tour from './pages/Record360Tour';
+import SignDocument from './pages/SignDocument';
 
 // Create User Context
 export const UserContext = React.createContext();
@@ -121,6 +122,7 @@ function AppContent() {
             <Route path="/payment/cancel" element={<PaymentCancel />} />
             <Route path="/terms" element={<TermsAndConditions />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
+            <Route path="/sign/:documentId" element={<SignDocument />} />
 
             {/* Protected Routes */}
             <Route

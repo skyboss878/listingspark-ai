@@ -4,6 +4,7 @@ import { useNavigate, useParams } from 'react-router-dom';
 import { useDropzone } from 'react-dropzone';
 import toast from 'react-hot-toast';
 import Camera360Capture from './Camera360Capture';
+import { getErrorMessage } from '../utils/errorHelpers';
 
 const VirtualTourUploadPage = () => {
   const { propertyId } = useParams();
@@ -86,7 +87,7 @@ const VirtualTourUploadPage = () => {
 
     } catch (error) {
       console.error('Upload error:', error);
-      const errorMsg = error.response?.data?.detail || 'Upload failed. Please check image format (2:1 aspect ratio for 360° images)';
+      const errorMsg = getErrorMessage(error, 'Upload failed. Please check image format (2:1 aspect ratio for 360° images)');
       toast.error(errorMsg);
     } finally {
       setUploading(false);

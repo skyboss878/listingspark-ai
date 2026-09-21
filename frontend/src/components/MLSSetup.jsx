@@ -3,6 +3,7 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import api from '../api';
 import toast from 'react-hot-toast';
+import { getErrorMessage } from '../utils/errorHelpers';
 
 const MLSSetup = () => {
   const navigate = useNavigate();
@@ -56,7 +57,7 @@ const MLSSetup = () => {
         description: ''
       });
     } catch (error) {
-      toast.error(error.response?.data?.detail || 'Failed to add MLS account', { id: 'mls-connect' });
+      toast.error(getErrorMessage(error, 'Failed to add MLS account'), { id: 'mls-connect' });
     }
   };
 

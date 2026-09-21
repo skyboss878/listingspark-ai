@@ -36,3 +36,14 @@ media/
 # Static files collected
 staticfiles/
 backend/listingspark.db
+
+# Local dev artifacts
+backend/*.bak_*
+backend/server.py.bak*
+frontend/src/pages/*.bak_*
+*.pdf.bak
+backend/cleanup_report_*.txt
+backend/gaps_report_*.txt
+backend/except_blocks.txt
+backend/console_log_lines.txt
+frontend/.env.prodcheck

@@ -1251,6 +1251,20 @@ async def get_me(current_user: User = Depends(get_current_user)):
 
 # ==================== LISTING ROUTES ====================
 
+@app.get("/api/property-lookup")
+async def property_lookup_route(
+    address: str,
+    city: Optional[str] = None,
+    state: Optional[str] = None,
+    zip_code: Optional[str] = None,
+    current_user: User = Depends(get_current_user)
+):
+    """Look up public property record data (year built, beds, baths, sqft,
+    lot size) by address via RentCast, to auto-fill the listing form."""
+    from property_lookup import lookup_property
+    result = await lookup_property(address, city, state, zip_code)
+    return result
+
 @app.post("/api/listings", response_model=Listing)
 async def create_listing(
     listing_data: ListingCreate,

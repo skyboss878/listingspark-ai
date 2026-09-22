@@ -9,6 +9,7 @@ const CreateListing = () => {
   const navigate = useNavigate();
   const [step, setStep] = useState(1);
   const [uploading, setUploading] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
   const [customFieldName, setCustomFieldName] = useState('');
   const [customFieldValue, setCustomFieldValue] = useState('');
   const [customFields, setCustomFields] = useState({});
@@ -40,6 +41,44 @@ const CreateListing = () => {
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setFormData({ ...formData, [name]: value });
+  };
+
+  const handlePropertyLookup = async () => {
+      toast.error('Enter address, city, and state first');
+      return;
+    }
+
+    setLookingUp(true);
+    try {
+      const response = await api.get('/property-lookup', {
+        params: {
+          address: formData.address,
+          city: formData.city,
+          state: formData.state,
+          zip_code: formData.zip_code,
+        },
+      });
+
+      if (response.data.found) {
+        const d = response.data.data;
+        setFormData((prev) => ({
+          ...prev,
+          property_type: d.property_type || prev.property_type,
+          bedrooms: d.bedrooms != null ? String(d.bedrooms) : prev.bedrooms,
+          bathrooms: d.bathrooms != null ? String(d.bathrooms) : prev.bathrooms,
+          square_feet: d.square_feet != null ? String(d.square_feet) : prev.square_feet,
+          lot_size: d.lot_size != null ? String(d.lot_size) : prev.lot_size,
+          year_built: d.year_built != null ? String(d.year_built) : prev.year_built,
+        }));
+        toast.success('Property details filled in from public records!');
+      } else {
+        toast.error(response.data.error || 'No property record found for this address');
+      }
+    } catch (error) {
+      toast.error(getErrorMessage(error, 'Property lookup failed'));
+    } finally {
+      setLookingUp(false);
+    }
   };
 
   const handleFeatureAdd = (feature) => {
@@ -276,6 +315,24 @@ const CreateListing = () => {
                   placeholder="90001"
                   required
                 />
+              </div>
+
+              <div>
+                <button
+                  type="button"
+                  onClick={handlePropertyLookup}
+                  disabled={lookingUp}
+                  className="w-full px-4 py-3 rounded-lg bg-purple-600/30 border border-purple-400/50 text-white font-medium hover:bg-purple-600/50 transition-all disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                >
+                  {lookingUp ? (
+                    <>
+                      <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                      Looking up property...
+                    </>
+                  ) : (
+                    <>🔍 Auto-Fill from Public Records</>
+                  )}
+                </button>
               </div>
 
               <div>

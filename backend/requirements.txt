@@ -33,3 +33,5 @@ aiofiles>=23.2.1
 supabase
 resend
 reportlab
+imageio_ffmpeg
+mutagen

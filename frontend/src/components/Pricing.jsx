@@ -13,7 +13,7 @@ export default function Pricing() {
   const redirectTimerRef = useRef(null);
   const API_URL = process.env.REACT_APP_BACKEND_URL || 'http://localhost:8000';
 
-  const PLAN_ID = 'P-1N875595TN640074WNDTXDAQ';
+  const PLAN_ID = 'P-5VU85963CV3671338NK2LQDI';
   const PAYPAL_CLIENT_ID = 'BAAYl-WkmMbOeTv7Fj5sy3RY8z1uCHjyQLWYsMdMsb2Ag6OCgV7eWDIQvedOd3LS--wrOHHp1ItPR8ttJQ';
 
   const saveSubscription = useCallback(async (subscriptionId) => {

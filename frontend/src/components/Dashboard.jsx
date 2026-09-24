@@ -355,6 +355,12 @@ const Dashboard = () => {
             >
               ✨ New Listing
             </button>
+            <button
+              onClick={() => navigate('/clients')}
+              className="border border-white/30 rounded-lg px-4 py-3 hover:bg-white/10 transition-all"
+            >
+              👥 Clients
+            </button>
             <button 
               onClick={logout} 
               className="border border-white/30 rounded-lg px-4 py-3 hover:bg-white/10 transition-all"

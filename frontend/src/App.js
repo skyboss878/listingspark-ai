@@ -24,6 +24,7 @@ import ViewListing from './pages/ViewListing';
 import EditListing from './pages/EditListing';
 import Record360Tour from './pages/Record360Tour';
 import SignDocument from './pages/SignDocument';
+import Clients from './pages/Clients';
 
 // Create User Context
 export const UserContext = React.createContext();
@@ -130,6 +131,14 @@ function AppContent() {
               element={
                 <ProtectedRoute>
                   <Dashboard />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/clients"
+              element={
+                <ProtectedRoute>
+                  <Clients />
                 </ProtectedRoute>
               }
             />

@@ -44,6 +44,7 @@ const CreateListing = () => {
   };
 
   const handlePropertyLookup = async () => {
+    if (!formData.address || !formData.city || !formData.state) {
       toast.error('Enter address, city, and state first');
       return;
     }

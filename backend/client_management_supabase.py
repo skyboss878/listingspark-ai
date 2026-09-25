@@ -80,6 +80,176 @@ Date: ______________
                           "brokerage_name", "budget_min", "budget_max", "preferred_locations",
                           "property_type", "agreement_period"],
         },
+        {
+            'document_type': 'purchase_agreement',
+            'name': 'Real Estate Purchase Agreement',
+            'content': '''REAL ESTATE PURCHASE AGREEMENT
+
+This agreement is entered into on {date} between:
+
+BUYER: {client_name}
+Contact: {client_email} | {client_phone}
+
+SELLER: {seller_name}
+
+PROPERTY ADDRESS: {property_address}
+LEGAL DESCRIPTION: {legal_description}
+
+PURCHASE PRICE: ${purchase_price}
+EARNEST MONEY DEPOSIT: ${earnest_money}
+CLOSING DATE: {closing_date}
+
+CONTINGENCIES:
+- Financing Contingency: {financing_contingency}
+- Inspection Contingency: {inspection_contingency}
+- Appraisal Contingency: {appraisal_contingency}
+
+INCLUDED ITEMS:
+{included_items}
+
+This offer is subject to acceptance by Seller. Time is of the essence.
+
+BUYER'S SIGNATURE: ___________________________
+Date: ______________
+
+SELLER'S SIGNATURE: ___________________________
+Date: ______________
+''',
+            'variables': ["date", "client_name", "client_email", "client_phone", "seller_name",
+                          "property_address", "legal_description", "purchase_price", "earnest_money",
+                          "closing_date", "financing_contingency", "inspection_contingency",
+                          "appraisal_contingency", "included_items"],
+        },
+        {
+            'document_type': 'disclosure',
+            'name': "Seller's Property Disclosure Statement",
+            'content': '''SELLER'S PROPERTY DISCLOSURE STATEMENT
+
+Property Address: {property_address}
+Seller: {client_name}
+Date: {date}
+
+Seller discloses the following known conditions regarding the property. This
+disclosure is not a warranty of condition and is not a substitute for any
+inspection.
+
+STRUCTURAL / SYSTEMS:
+Known defects (roof, foundation, plumbing, electrical, HVAC): {known_defects}
+
+ENVIRONMENTAL:
+Known hazards (lead paint, mold, asbestos, radon, flood zone): {environmental_hazards}
+
+OTHER MATERIAL FACTS:
+{other_material_facts}
+
+Seller certifies that the information provided above is true and correct to
+the best of Seller's knowledge as of the date signed below.
+
+SELLER'S SIGNATURE: ___________________________
+Date: ______________
+
+BUYER ACKNOWLEDGMENT OF RECEIPT: ___________________________
+Date: ______________
+''',
+            'variables': ["property_address", "client_name", "date", "known_defects",
+                          "environmental_hazards", "other_material_facts"],
+        },
+        {
+            'document_type': 'addendum',
+            'name': 'Addendum to Purchase Agreement',
+            'content': '''ADDENDUM TO PURCHASE AGREEMENT
+
+This Addendum is made part of the Purchase Agreement dated {original_agreement_date}
+for the property located at:
+
+{property_address}
+
+BUYER: {client_name}
+SELLER: {seller_name}
+
+TERMS OF THIS ADDENDUM:
+{addendum_terms}
+
+All other terms and conditions of the original Purchase Agreement remain
+unchanged and in full effect except as modified above.
+
+BUYER'S SIGNATURE: ___________________________
+Date: ______________
+
+SELLER'S SIGNATURE: ___________________________
+Date: ______________
+''',
+            'variables': ["original_agreement_date", "property_address", "client_name",
+                          "seller_name", "addendum_terms"],
+        },
+        {
+            'document_type': 'inspection',
+            'name': 'Inspection Contingency Addendum',
+            'content': '''INSPECTION CONTINGENCY ADDENDUM
+
+Property Address: {property_address}
+Buyer: {client_name}
+Inspection Period: {inspection_period} days from acceptance date
+
+Buyer shall have the right to conduct inspections of the property at Buyer's
+expense during the Inspection Period, including: {inspection_types}.
+
+INSPECTION RESULTS:
+Date of Inspection: {inspection_date}
+Inspector: {inspector_name}
+Summary of Findings: {inspection_findings}
+
+BUYER'S RESPONSE:
+[ ] Accept property in its current condition
+[ ] Request repairs (see attached list)
+[ ] Terminate agreement per inspection contingency
+
+Repair Requests / Notes:
+{repair_requests}
+
+BUYER'S SIGNATURE: ___________________________
+Date: ______________
+
+SELLER'S SIGNATURE (if repairs agreed): ___________________________
+Date: ______________
+''',
+            'variables': ["property_address", "client_name", "inspection_period", "inspection_types",
+                          "inspection_date", "inspector_name", "inspection_findings", "repair_requests"],
+        },
+        {
+            'document_type': 'escrow',
+            'name': 'Escrow Instructions',
+            'content': '''ESCROW INSTRUCTIONS
+
+Property Address: {property_address}
+Escrow Number: {escrow_number}
+Escrow Company: {escrow_company}
+
+BUYER: {client_name}
+SELLER: {seller_name}
+
+PURCHASE PRICE: ${purchase_price}
+EARNEST MONEY HELD IN ESCROW: ${earnest_money}
+SCHEDULED CLOSING DATE: {closing_date}
+
+INSTRUCTIONS TO ESCROW HOLDER:
+Escrow holder is instructed to hold all funds and documents related to this
+transaction and disburse/record them only upon satisfaction of all terms of
+the underlying Purchase Agreement, including: {escrow_conditions}
+
+PRORATIONS AND CLOSING COSTS:
+{closing_cost_terms}
+
+BUYER'S SIGNATURE: ___________________________
+Date: ______________
+
+SELLER'S SIGNATURE: ___________________________
+Date: ______________
+''',
+            'variables': ["property_address", "escrow_number", "escrow_company", "client_name",
+                          "seller_name", "purchase_price", "earnest_money", "closing_date",
+                          "escrow_conditions", "closing_cost_terms"],
+        },
     ]
 
     for template in default_templates:

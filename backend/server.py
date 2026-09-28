@@ -2679,6 +2679,10 @@ from client_management import (
     DocumentSign,
     DocumentType,
     DocumentStatus,
+    PipelineStage,
+    ActivityCreate,
+    ClientTaskCreate,
+    ClientTaskUpdate,
 )
 
 if USE_SUPABASE:
@@ -2794,6 +2798,120 @@ async def get_client_activity(
         return activity
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to get activity: {str(e)}")
+
+@app.post("/api/clients/{client_id}/activity")
+async def add_client_activity(
+    client_id: str,
+    activity: ActivityCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Log a note, call, text, email, property viewed, or appointment for a client"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.get_client(client_id, user_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        await client_service.log_activity(
+            client_id, user_id, activity.activity_type.value, activity.description, activity.metadata
+        )
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to log activity: {str(e)}")
+
+@app.put("/api/clients/{client_id}/pipeline-stage")
+async def update_pipeline_stage(
+    client_id: str,
+    stage: PipelineStage,
+    current_user: User = Depends(get_current_user)
+):
+    """Move a client to a different stage in the CRM pipeline"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.update_client(client_id, user_id, ClientUpdate(pipeline_stage=stage))
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        await client_service.log_activity(
+            client_id, user_id, "stage_changed", f"Pipeline stage moved to {stage.value.replace('_', ' ').title()}"
+        )
+        return client
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update pipeline stage: {str(e)}")
+
+# ==================== FOLLOW-UP TASKS ====================
+
+@app.post("/api/clients/{client_id}/tasks")
+async def create_client_task(
+    client_id: str,
+    task: ClientTaskCreate,
+    current_user: User = Depends(get_current_user)
+):
+    """Create a follow-up task for a client"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        client = await client_service.get_client(client_id, user_id)
+        if not client:
+            raise HTTPException(status_code=404, detail="Client not found")
+        result = await client_service.create_task(client_id, user_id, task.title, task.due_date)
+        return result
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to create task: {str(e)}")
+
+@app.get("/api/tasks")
+async def get_tasks(
+    client_id: Optional[str] = None,
+    include_completed: bool = True,
+    current_user: User = Depends(get_current_user)
+):
+    """Get follow-up tasks - all tasks for the user, or filtered to one client"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        tasks = await client_service.get_tasks(user_id, client_id, include_completed)
+        return tasks
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to get tasks: {str(e)}")
+
+@app.put("/api/tasks/{task_id}")
+async def update_task(
+    task_id: str,
+    updates: ClientTaskUpdate,
+    current_user: User = Depends(get_current_user)
+):
+    """Update a follow-up task (e.g., mark complete)"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        task = await client_service.update_task(
+            task_id, user_id, updates.title, updates.due_date, updates.completed
+        )
+        if not task:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return task
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to update task: {str(e)}")
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(
+    task_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """Delete a follow-up task"""
+    try:
+        user_id = current_user["id"] if isinstance(current_user, dict) else current_user.id
+        success = await client_service.delete_task(task_id, user_id)
+        if not success:
+            raise HTTPException(status_code=404, detail="Task not found")
+        return {"success": True}
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to delete task: {str(e)}")
 
 
 # ==================== DOCUMENT MANAGEMENT ENDPOINTS ====================

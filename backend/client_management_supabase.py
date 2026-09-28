@@ -331,6 +331,8 @@ class ClientManagementServiceSupabase:
             row["preferred_locations"] = updates.preferred_locations
         if updates.notes is not None:
             row["notes"] = updates.notes
+        if updates.pipeline_stage is not None:
+            row["pipeline_stage"] = updates.pipeline_stage.value
 
         if not row:
             return await self.get_client(client_id, user_id)
@@ -352,6 +354,49 @@ class ClientManagementServiceSupabase:
             "activity_type": activity_type, "description": description,
             "metadata": metadata, "created_at": datetime.utcnow().isoformat()
         }).execute()
+
+    async def create_task(self, client_id: str, user_id: str, title: str, due_date=None) -> Dict[str, Any]:
+        task = {
+            "id": str(uuid.uuid4()),
+            "client_id": client_id,
+            "user_id": user_id,
+            "title": title,
+            "due_date": due_date.isoformat() if due_date else None,
+            "completed": False,
+            "created_at": datetime.utcnow().isoformat(),
+            "updated_at": datetime.utcnow().isoformat(),
+        }
+        self.client.table("client_tasks").insert(task).execute()
+        return task
+
+    async def get_tasks(self, user_id: str, client_id: Optional[str] = None, include_completed: bool = True) -> List[Dict[str, Any]]:
+        q = self.client.table("client_tasks").select("*").eq("user_id", user_id)
+        if client_id:
+            q = q.eq("client_id", client_id)
+        if not include_completed:
+            q = q.eq("completed", False)
+        result = q.order("due_date", desc=False).execute()
+        return result.data or []
+
+    async def update_task(self, task_id: str, user_id: str, title=None, due_date=None, completed=None) -> Optional[Dict[str, Any]]:
+        row = {}
+        if title is not None:
+            row["title"] = title
+        if due_date is not None:
+            row["due_date"] = due_date.isoformat()
+        if completed is not None:
+            row["completed"] = completed
+        if not row:
+            result = self.client.table("client_tasks").select("*").eq("id", task_id).eq("user_id", user_id).execute()
+            return result.data[0] if result.data else None
+        row["updated_at"] = datetime.utcnow().isoformat()
+        self.client.table("client_tasks").update(row).eq("id", task_id).eq("user_id", user_id).execute()
+        result = self.client.table("client_tasks").select("*").eq("id", task_id).eq("user_id", user_id).execute()
+        return result.data[0] if result.data else None
+
+    async def delete_task(self, task_id: str, user_id: str) -> bool:
+        result = self.client.table("client_tasks").delete().eq("id", task_id).eq("user_id", user_id).execute()
+        return bool(result.data)
 
 
 class DocumentManagementServiceSupabase:

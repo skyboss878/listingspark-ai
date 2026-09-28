@@ -20,6 +20,23 @@ class ClientType(str, Enum):
     SELLER = "seller"
     BOTH = "both"
 
+class PipelineStage(str, Enum):
+    NEW_LEAD = "new_lead"
+    CONTACTED = "contacted"
+    QUALIFIED = "qualified"
+    SHOWING = "showing"
+    OFFER = "offer"
+    ESCROW = "escrow"
+    CLOSED = "closed"
+
+class ActivityType(str, Enum):
+    NOTE = "note"
+    CALL = "call"
+    TEXT = "text"
+    EMAIL = "email"
+    PROPERTY_VIEWED = "property_viewed"
+    APPOINTMENT = "appointment"
+
 class DocumentType(str, Enum):
     LISTING_AGREEMENT = "listing_agreement"
     BUYER_AGREEMENT = "buyer_agreement"
@@ -63,6 +80,21 @@ class ClientUpdate(BaseModel):
     budget_max: Optional[int] = None
     preferred_locations: Optional[List[str]] = None
     notes: Optional[str] = None
+    pipeline_stage: Optional[PipelineStage] = None
+
+class ActivityCreate(BaseModel):
+    activity_type: ActivityType
+    description: str
+    metadata: Optional[Dict[str, Any]] = None
+
+class ClientTaskCreate(BaseModel):
+    title: str = Field(..., min_length=1, max_length=300)
+    due_date: Optional[datetime] = None
+
+class ClientTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    due_date: Optional[datetime] = None
+    completed: Optional[bool] = None
 
 class DocumentCreate(BaseModel):
     client_id: str

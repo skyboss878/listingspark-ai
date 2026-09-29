@@ -243,7 +243,7 @@ const Dashboard = () => {
 
   // Social media sharing
   const shareToSocialMedia = (listing, platform) => {
-    const listingUrl = `${window.location.origin}/listing/${listing.id}`;
+    const listingUrl = `${window.location.origin}/open-house/${listing.id}`;
     const text = `Check out this property: ${listing.address}, ${listing.city} - $${listing.price?.toLocaleString()}`;
     
     const urls = {

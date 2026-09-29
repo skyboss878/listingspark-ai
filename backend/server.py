@@ -1315,6 +1315,70 @@ async def get_listing(
         raise HTTPException(status_code=404, detail="Listing not found")
     return Listing(**listing)
 
+# ==================== OPEN HOUSE MODE ====================
+
+class OpenHouseLead(BaseModel):
+    first_name: str = Field(..., min_length=1, max_length=100)
+    last_name: str = Field(..., min_length=1, max_length=100)
+    email: EmailStr
+    phone: Optional[str] = None
+
+@app.get("/api/listings/{listing_id}/open-house")
+async def get_open_house_listing(listing_id: str):
+    """Public listing lookup for the open house QR page - no auth required.
+    The listing_id itself acts as the access token, same pattern as the
+    document signing link. Only non-sensitive fields are returned."""
+    listing = sqlite_db.get_listing_public(listing_id) if USE_SUPABASE else await db.listings.find_one({"id": listing_id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    return {
+        "id": listing["id"],
+        "address": listing["address"],
+        "city": listing["city"],
+        "state": listing["state"],
+        "zip_code": listing["zip_code"],
+        "price": listing["price"],
+        "bedrooms": listing.get("bedrooms"),
+        "bathrooms": listing.get("bathrooms"),
+        "square_feet": listing.get("square_feet"),
+        "property_type": listing.get("property_type"),
+        "description": (listing.get("ai_content") or {}).get("description") or listing.get("description"),
+        "images": listing.get("images", []),
+        "features": listing.get("features", []),
+    }
+
+@app.post("/api/listings/{listing_id}/open-house/lead")
+async def capture_open_house_lead(listing_id: str, lead: OpenHouseLead):
+    """Public lead capture from the open house QR page - no auth required.
+    Creates the visitor as a new client (lead) under the listing's agent,
+    and logs the visit as activity so it shows up in the CRM pipeline."""
+    listing = sqlite_db.get_listing_public(listing_id) if USE_SUPABASE else await db.listings.find_one({"id": listing_id})
+    if not listing:
+        raise HTTPException(status_code=404, detail="Listing not found")
+
+    agent_user_id = listing["user_id"]
+
+    try:
+        client_data = ClientCreate(
+            first_name=lead.first_name,
+            last_name=lead.last_name,
+            email=lead.email,
+            phone=lead.phone,
+            client_type=ClientType.BUYER,
+        )
+        client = await client_service.create_client(agent_user_id, client_data)
+
+        await client_service.log_activity(
+            client["id"], agent_user_id, "property_viewed",
+            f"Visited open house at {listing['address']}, {listing['city']}",
+            {"listing_id": listing_id}
+        )
+
+        return {"success": True, "message": "Thanks! The agent will be in touch."}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to capture lead: {str(e)}")
+
 @app.put("/api/listings/{listing_id}", response_model=Listing)
 async def update_listing(
     listing_id: str,
@@ -2675,6 +2739,7 @@ if __name__ == "__main__":
 from client_management import (
     ClientCreate,
     ClientUpdate,
+    ClientType,
     DocumentCreate,
     DocumentSign,
     DocumentType,

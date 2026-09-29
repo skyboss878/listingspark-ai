@@ -25,6 +25,7 @@ import EditListing from './pages/EditListing';
 import Record360Tour from './pages/Record360Tour';
 import SignDocument from './pages/SignDocument';
 import Clients from './pages/Clients';
+import OpenHouse from './pages/OpenHouse';
 
 // Create User Context
 export const UserContext = React.createContext();
@@ -124,6 +125,7 @@ function AppContent() {
             <Route path="/terms" element={<TermsAndConditions />} />
             <Route path="/privacy" element={<PrivacyPolicy />} />
             <Route path="/sign/:documentId" element={<SignDocument />} />
+            <Route path="/open-house/:listingId" element={<OpenHouse />} />
 
             {/* Protected Routes */}
             <Route

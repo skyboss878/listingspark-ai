@@ -45,6 +45,7 @@ const Dashboard = () => {
   const [mlsAccounts, setMLSAccounts] = useState([]);
   const [systemFeatures, setSystemFeatures] = useState({});
   const [socialMenuOpen, setSocialMenuOpen] = useState(null);
+  const [openHouseListingId, setOpenHouseListingId] = useState(null);
   const [cameraPermissionAsked, setCameraPermissionAsked] = useState(false);
 
   // Request camera permission during onboarding
@@ -584,6 +585,13 @@ const Dashboard = () => {
                           )}
                         </div>
 
+                        <button
+                          onClick={() => setOpenHouseListingId(listing.id)}
+                          className="w-full mt-2 bg-gradient-to-r from-orange-500 to-amber-500 px-4 py-2.5 rounded-lg hover:shadow-lg transition-all text-sm font-semibold"
+                        >
+                          🏠 Open House Mode
+                        </button>
+
                         {/* Social Media Share Dropdown */}
                         <div className="relative mt-2">
                           <button
@@ -643,6 +651,49 @@ const Dashboard = () => {
           )}
         </div>
       </div>
+
+      {openHouseListingId && (() => {
+        const listing = listings.find((l) => l.id === openHouseListingId);
+        const openHouseUrl = `${window.location.origin}/open-house/${openHouseListingId}`;
+        const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=280x280&data=${encodeURIComponent(openHouseUrl)}`;
+        return (
+          <div
+            className="fixed inset-0 bg-black/70 flex items-center justify-center z-50 p-4"
+            onClick={() => setOpenHouseListingId(null)}
+          >
+            <div
+              className="bg-gradient-to-br from-purple-900 to-indigo-900 rounded-2xl p-6 max-w-sm w-full border border-white/20 text-center"
+              onClick={(e) => e.stopPropagation()}
+            >
+              <h3 className="text-xl font-bold mb-1">🏠 Open House Mode</h3>
+              <p className="text-sm text-purple-300 mb-4">{listing?.address}</p>
+
+              <div className="bg-white rounded-xl p-4 inline-block mb-4">
+                <img src={qrImageUrl} alt="Open house QR code" className="w-56 h-56" />
+              </div>
+
+              <p className="text-sm text-purple-200 mb-1">Print this or display it on a tablet.</p>
+              <p className="text-xs text-purple-400 mb-4">Visitors scan it, see the property, and leave their contact info - straight into your Clients pipeline.</p>
+
+              <button
+                onClick={() => {
+                  navigator.clipboard.writeText(openHouseUrl);
+                  toast.success('Link copied!');
+                }}
+                className="w-full bg-white/10 border border-white/20 px-4 py-2 rounded-lg hover:bg-white/20 transition-all text-sm mb-2"
+              >
+                📋 Copy Link
+              </button>
+              <button
+                onClick={() => setOpenHouseListingId(null)}
+                className="w-full bg-purple-600 px-4 py-2 rounded-lg hover:bg-purple-700 transition-all text-sm"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 };

@@ -141,6 +141,13 @@ class SupabaseDB:
         result = self.client.table("listings").select("*").eq("id", listing_id).eq("user_id", user_id).execute()
         return result.data[0] if result.data else None
 
+    def get_listing_public(self, listing_id: str) -> Optional[Dict]:
+        """Public lookup with no user_id filter - used for open house QR pages.
+        The listing_id itself acts as the access token, same pattern as the
+        document signing link."""
+        result = self.client.table("listings").select("*").eq("id", listing_id).execute()
+        return result.data[0] if result.data else None
+
     def count_listings(self, user_id: str, status: Optional[str] = None) -> int:
         q = self.client.table("listings").select("id", count="exact").eq("user_id", user_id)
         if status:
